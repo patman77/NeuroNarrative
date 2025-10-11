@@ -19,7 +19,9 @@ async def summarize_with_local_llm(text: str, settings: Settings) -> str | None:
         "model": settings.ollama_model,
         "system": SYSTEM_PROMPT,
         "prompt": (
-            "Transcript (timestamps removed):\n" """\n{cleaned}\n"""\nSummarize as one short sentence (<= 20 words). If unclear or mostly fillers, output: NONE"
+            "Transcript (timestamps removed):\n"
+            f"\"\"\"\n{cleaned}\n\"\"\"\n"
+            "Summarize as one short sentence (<= 20 words). If unclear or mostly fillers, output: NONE"
         ),
         "stream": False,
         "options": {
