@@ -40,7 +40,14 @@ is running in **Linux container** mode (or that your Docker Engine context point
 then launch the stack from the repository root:
 
 ```bash
-docker compose --project-directory . -f docker/compose.local.yml up --build
+# Git Bash / WSL / macOS / Linux
+docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up --build
+
+# Windows PowerShell
+docker compose --project-directory "$PWD" -f docker/compose.local.yml up --build
+
+# Git Bash on Windows when you need a Windows-formatted path
+docker compose --project-directory "$(pwd -W)" -f docker/compose.local.yml up --build
 ```
 
 This starts the FastAPI backend on <http://localhost:8000> and the Vite frontend on
@@ -55,7 +62,14 @@ Speech summarisation uses a local LLM. When you have an NVIDIA GPU (e.g. RTX 307
 the Ollama sidecar as well:
 
 ```bash
-docker compose --project-directory . -f docker/compose.local.yml --profile summarizer up --build
+# Git Bash / WSL / macOS / Linux
+docker compose --project-directory "$(pwd)" -f docker/compose.local.yml --profile summarizer up --build
+
+# Windows PowerShell
+docker compose --project-directory "$PWD" -f docker/compose.local.yml --profile summarizer up --build
+
+# Git Bash on Windows with Windows-style path
+docker compose --project-directory "$(pwd -W)" -f docker/compose.local.yml --profile summarizer up --build
 ```
 
 The backend automatically disables summarisation if no GPU is exposed to the container or if the
