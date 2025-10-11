@@ -1,0 +1,47 @@
+name: neuronnarrative
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - NEURONARRATIVE_OLLAMA_URL=http://ollama:11434/api/generate
+      - NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=true
+    volumes:
+      - uploads:/tmp/neuronarrative
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://backend:8000/api
+    depends_on:
+      - backend
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    profiles:
+      - summarizer
+    gpus: all
+
+volumes:
+  uploads:
+  ollama:
