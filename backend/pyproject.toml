@@ -3,12 +3,15 @@ name = "neuronarrative-backend"
 version = "0.1.0"
 description = "FastAPI backend for NeuroNarrative multimodal analysis"
 readme = "../README.md"
-authors = ["NeuroNarrative Team <dev@example.com>"]
+authors = [
+    { name = "NeuroNarrative Team", email = "dev@example.com" }
+]
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
     "pydantic>=2.7",
+    "pydantic-settings>=2.2",
     "python-multipart>=0.0.9",
     "pandas>=2.2",
     "numpy>=1.26",
@@ -16,6 +19,7 @@ dependencies = [
     "librosa>=0.10",
     "soundfile>=0.12",
     "ruptures>=1.1.9",
+    "httpx>=0.27",
     "requests>=2.31",
     "python-dotenv>=1.0"
 ]

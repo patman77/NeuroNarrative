@@ -11,7 +11,6 @@ RUN apt-get update \
         build-essential \
         libsndfile1 \
         ffmpeg \
-        libatlas-base-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/pyproject.toml ./pyproject.toml

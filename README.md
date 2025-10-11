@@ -35,21 +35,41 @@ performs rule-based event detection, and prepares transcript windows for later s
 
 ### Docker (backend + frontend)
 
-The repository ships with a local compose stack located under `docker/`.
+The repository ships with a local compose stack located under `docker/`. Ensure that Docker Desktop
+is running in **Linux container** mode (or that your Docker Engine context points to a Linux host),
+then launch the stack from the repository root:
 
 ```bash
-docker compose -f docker/compose.local.yml up --build
+# Git Bash / WSL / macOS / Linux
+docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up --build
+
+# Windows PowerShell
+docker compose --project-directory "$PWD" -f docker/compose.local.yml up --build
+
+# Git Bash on Windows when you need a Windows-formatted path
+docker compose --project-directory "$(pwd -W)" -f docker/compose.local.yml up --build
 ```
 
 This starts the FastAPI backend on <http://localhost:8000> and the Vite frontend on
 <http://localhost:5173>. Uploads are stored inside a named volume so successive runs can reuse
 temporary files.
 
+On Windows make sure Docker Desktop is using the **WSL 2 / Linux** backend (`Settings → General → Use the WSL 2 based engine`).
+If you have multiple Docker contexts, verify that `docker context show` returns a Linux-capable
+context (for Docker Desktop this is typically `desktop-linux`).
+
 Speech summarisation uses a local LLM. When you have an NVIDIA GPU (e.g. RTX 3070 Ti) available, start
 the Ollama sidecar as well:
 
 ```bash
-docker compose -f docker/compose.local.yml --profile summarizer up --build
+# Git Bash / WSL / macOS / Linux
+docker compose --project-directory "$(pwd)" -f docker/compose.local.yml --profile summarizer up --build
+
+# Windows PowerShell
+docker compose --project-directory "$PWD" -f docker/compose.local.yml --profile summarizer up --build
+
+# Git Bash on Windows with Windows-style path
+docker compose --project-directory "$(pwd -W)" -f docker/compose.local.yml --profile summarizer up --build
 ```
 
 The backend automatically disables summarisation if no GPU is exposed to the container or if the

@@ -1,8 +1,16 @@
 from functools import lru_cache
-from pydantic import BaseSettings, Field
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="NEURONARRATIVE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
     app_name: str = Field(default="NeuroNarrative API")
     api_prefix: str = Field(default="/api")
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"])
@@ -14,11 +22,6 @@ class Settings(BaseSettings):
         default=True,
         description="Disable summarisation automatically when no GPU is available",
     )
-
-    class Config:
-        env_prefix = "NEURONARRATIVE_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 @lru_cache(maxsize=1)
