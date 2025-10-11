@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from ..core.config import Settings, get_settings
 from ..services.analysis import run_analysis
 from ..services.storage import save_temp_upload
+from ..utils.hardware import gpu_is_available
 from .schemas import (
     AnalysisRequest,
     AnalysisResponse,
@@ -18,8 +19,11 @@ router = APIRouter()
 
 
 @router.get("/health", response_model=HealthResponse)
-async def healthcheck() -> HealthResponse:
-    return HealthResponse()
+async def healthcheck(settings: Settings = Depends(get_settings)) -> HealthResponse:
+    return HealthResponse(
+        summarizer_enabled=settings.summarizer_enabled,
+        gpu_available=gpu_is_available(),
+    )
 
 
 @router.post("/upload", response_model=UploadResponse)

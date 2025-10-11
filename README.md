@@ -20,14 +20,41 @@ performs rule-based event detection, and prepares transcript windows for later s
 │   │   └── services/      # Signal processing, storage, and summarisation helpers
 │   ├── pyproject.toml     # Python project definition and dependencies
 │   └── tests/             # Pytest suite
-├── frontend/              # React + Vite single-page application shell
-│   ├── src/               # Components, hooks, and styles
-│   ├── package.json       # Node project definition
-│   └── vite.config.ts     # Vite bundler configuration
-└── docs/                  # Architecture and design documentation
+├── docker/                # Container build files and compose stacks
+│   ├── backend.Dockerfile
+│   ├── frontend.Dockerfile
+│   └── compose.local.yml
+├── docs/                  # Architecture and design documentation
+└── frontend/              # React + Vite single-page application shell
+    ├── src/
+    ├── package.json
+    └── vite.config.ts
 ```
 
 ## Getting started
+
+### Docker (backend + frontend)
+
+The repository ships with a local compose stack located under `docker/`.
+
+```bash
+docker compose -f docker/compose.local.yml up --build
+```
+
+This starts the FastAPI backend on <http://localhost:8000> and the Vite frontend on
+<http://localhost:5173>. Uploads are stored inside a named volume so successive runs can reuse
+temporary files.
+
+Speech summarisation uses a local LLM. When you have an NVIDIA GPU (e.g. RTX 3070 Ti) available, start
+the Ollama sidecar as well:
+
+```bash
+docker compose -f docker/compose.local.yml --profile summarizer up --build
+```
+
+The backend automatically disables summarisation if no GPU is exposed to the container or if the
+`summarizer` profile is skipped. Override this behaviour with
+`NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false` when you explicitly want CPU-only runs.
 
 ### Backend
 ```bash
@@ -59,6 +86,7 @@ By default the backend expects an [Ollama](https://ollama.com/) compatible endpo
 NEURONARRATIVE_OLLAMA_URL=http://localhost:11434/api/generate
 NEURONARRATIVE_OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M
 NEURONARRATIVE_SUMMARIZER_ENABLED=false  # disable summarisation when no local model is running
+NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false  # opt out of GPU auto-detection guard
 ```
 
 ## Testing

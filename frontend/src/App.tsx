@@ -23,6 +23,10 @@ export interface AnalysisResponse {
   audio_metadata: { sampling_rate_hz: number; duration_sec: number };
 }
 
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? ""
+});
+
 function App() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [wavFile, setWavFile] = useState<File | null>(null);
@@ -38,7 +42,7 @@ function App() {
       const formData = new FormData();
       formData.append("gsr", csvFile);
       formData.append("audio", wavFile);
-      const uploadResponse = await axios.post("/api/upload", formData, {
+      const uploadResponse = await apiClient.post("/api/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" }
       });
 
@@ -50,7 +54,7 @@ function App() {
         pre_event_window_sec: preWindow,
         post_event_window_sec: postWindow
       };
-      const analyzeResponse = await axios.post<AnalysisResponse>("/api/analyze", payload);
+      const analyzeResponse = await apiClient.post<AnalysisResponse>("/api/analyze", payload);
       return analyzeResponse.data;
     }
   });

@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     ollama_url: str = Field(default="http://127.0.0.1:11434/api/generate", description="Local LLM endpoint")
     ollama_model: str = Field(default="qwen2.5:7b-instruct-q4_K_M")
     summarizer_enabled: bool = Field(default=True)
+    require_gpu_for_summarizer: bool = Field(
+        default=True,
+        description="Disable summarisation automatically when no GPU is available",
+    )
 
     class Config:
         env_prefix = "NEURONARRATIVE_"

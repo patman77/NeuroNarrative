@@ -212,7 +212,7 @@ Primary use cases:
 - Logging avoids storing raw transcript text unless explicitly enabled.
 
 ## 12. Deployment & Operations
-- **Local Development**: `docker compose up` starts FastAPI, PostgreSQL, Redis, Ollama (optional), and Vite dev server.
+- **Local Development**: `docker compose -f docker/compose.local.yml up` starts FastAPI, PostgreSQL, Redis, Ollama (optional), and Vite dev server.
 - **Packaging**: Provide scripts to build standalone desktop app (Electron shell pointing to bundled FastAPI) and CLI utilities for headless batch processing.
 - **Monitoring**: Lightweight metrics endpoint (`/metrics`) for CPU usage, job durations; optional integration with Grafana.
 - **Backups**: Document file system backup procedure for session data and exports.
