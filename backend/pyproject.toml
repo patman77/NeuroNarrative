@@ -3,7 +3,9 @@ name = "neuronarrative-backend"
 version = "0.1.0"
 description = "FastAPI backend for NeuroNarrative multimodal analysis"
 readme = "../README.md"
-authors = ["NeuroNarrative Team <dev@example.com>"]
+authors = [
+    { name = "NeuroNarrative Team", email = "dev@example.com" }
+]
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.111.0",
