@@ -28,6 +28,12 @@ body {
   backdrop-filter: blur(14px);
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .app-header h1 {
   margin: 0;
   font-size: 1.8rem;
@@ -116,6 +122,23 @@ body {
   color: #e2e8f0;
 }
 
+.file-name {
+  font-size: 0.8rem;
+  color: #cbd5f5;
+  word-break: break-word;
+}
+
+.error-text {
+  margin-top: 0.8rem;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.muted.small {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
 .field-list label span {
   font-size: 0.9rem;
   margin-bottom: 0.4rem;
@@ -135,6 +158,142 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 1rem;
+}
+
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.signal-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+.signal-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.playback-button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 1.4rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(56, 189, 248, 0.8));
+  color: #0f172a;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.playback-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.35);
+}
+
+.playback-timeline {
+  position: relative;
+  width: 180px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.playback-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.8), rgba(59, 130, 246, 0.8));
+}
+
+.playback-time {
+  font-size: 0.85rem;
+  color: #cbd5f5;
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge-panel {
+  display: flex;
+  gap: 2.2rem;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(22, 163, 192, 0.2), rgba(56, 189, 248, 0.1));
+  padding: 1rem 1.5rem;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.gauge {
+  max-width: 320px;
+}
+
+.gauge-tick {
+  fill: rgba(15, 23, 42, 0.9);
+  font-size: 0.7rem;
+}
+
+.gauge-value {
+  fill: #0f172a;
+  font-size: 2.8rem;
+  font-weight: 700;
+}
+
+.gauge-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.metric-label {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.metric-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.signal-chart {
+  overflow-x: auto;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.5);
+  padding: 0.8rem 0.4rem;
+}
+
+.signal-chart svg {
+  display: block;
+}
+
+.signal-chart::-webkit-scrollbar {
+  height: 8px;
+}
+
+.signal-chart::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+
+.signal-chart::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 999px;
 }
 
 .timeline {
