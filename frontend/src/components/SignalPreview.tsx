@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParsedGsrResult, ParsedGsrSample } from "../utils/gsrParser";
+import { logEvent } from "../utils/logger";
 
 interface SignalPreviewProps {
   data: ParsedGsrResult;
@@ -224,6 +225,11 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
     setCurrentTime(0);
     setIsPlaying(false);
     setAudioDuration(null);
+    logEvent("Preview data refreshed", {
+      csvColumn: data.sourceColumn,
+      sampleCount: data.samples.length,
+      audioAvailable: Boolean(audioUrl)
+    });
   }, [audioUrl, data.sourceColumn, data.startTimeSec, data.endTimeSec]);
 
   useEffect(() => {
@@ -233,14 +239,27 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
     }
     const handleLoaded = () => {
       setAudioDuration(audio.duration);
+      logEvent("Audio metadata loaded", {
+        duration: audio.duration,
+        readyState: audio.readyState
+      });
     };
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => {
+      setIsPlaying(true);
+      logEvent("Audio playback started");
+    };
+    const handlePause = () => {
+      setIsPlaying(false);
+      logEvent("Audio playback paused", { currentTime: audio.currentTime });
+    };
     const handleEnded = () => {
       setIsPlaying(false);
       setCurrentTime(audio.duration || 0);
+      logEvent("Audio playback ended");
     };
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
 
     audio.addEventListener("loadedmetadata", handleLoaded);
     audio.addEventListener("play", handlePlay);
@@ -274,13 +293,19 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
   const togglePlayback = () => {
     const audio = audioRef.current;
     if (!audio) {
+      logEvent("Playback toggle ignored", { audioAvailable: false });
       return;
     }
     if (audio.paused) {
-      audio.play().catch(() => {
+      logEvent("Playback toggle", { action: "play" });
+      audio.play().catch((error) => {
         setIsPlaying(false);
+        logEvent("Audio playback failed to start", {
+          message: error instanceof Error ? error.message : String(error)
+        });
       });
     } else {
+      logEvent("Playback toggle", { action: "pause", currentTime: audio.currentTime });
       audio.pause();
     }
   };

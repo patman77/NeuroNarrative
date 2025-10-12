@@ -8,6 +8,7 @@ import { SignalPreview } from "./components/SignalPreview";
 import type { ParsedGsrResult } from "./utils/gsrParser";
 import { parseGsrCsv } from "./utils/gsrParser";
 import "./styles.css";
+import { logEvent } from "./utils/logger";
 
 export interface SummarizedEvent {
   event_id: string;
@@ -60,27 +61,43 @@ function App() {
     const parseId = latestParseId.current + 1;
     latestParseId.current = parseId;
     if (!file) {
+      logEvent("CSV cleared");
       setParseError(null);
       setIsParsingCsv(false);
       return;
     }
+    let parseSucceeded = false;
     try {
       setIsParsingCsv(true);
+      logEvent("CSV selected", {
+        name: file.name,
+        size: file.size,
+        type: file.type || "unknown"
+      });
       const parsed = await parseGsrCsv(file);
       if (latestParseId.current !== parseId) {
         return;
       }
       setGsrPreview(parsed);
       setParseError(null);
+      parseSucceeded = true;
+      logEvent("CSV parsed successfully", {
+        field: parsed.sourceColumn,
+        samples: parsed.samples.length,
+        samplingRateHz: parsed.samplingRateHz,
+        duration: parsed.endTimeSec - parsed.startTimeSec
+      });
     } catch (error) {
       if (latestParseId.current !== parseId) {
         return;
       }
       const message = error instanceof Error ? error.message : "Unable to parse CSV export.";
       setParseError(message);
+      logEvent("CSV parsing failed", { message });
     } finally {
       if (latestParseId.current === parseId) {
         setIsParsingCsv(false);
+        logEvent("CSV parsing finished", { success: parseSucceeded });
       }
     }
   }, []);
@@ -95,23 +112,59 @@ function App() {
       }
       return file ? URL.createObjectURL(file) : null;
     });
+    if (file) {
+      logEvent("WAV selected", {
+        name: file.name,
+        size: file.size,
+        type: file.type || "audio/wav"
+      });
+    } else {
+      logEvent("WAV cleared");
+    }
   }, []);
 
   const previewDisabled = !csvFile || !wavFile || !!parseError || !gsrPreview;
 
+  useEffect(() => {
+    if (!previewDisabled && csvFile && wavFile && gsrPreview) {
+      logEvent("Preview button enabled", {
+        csvName: csvFile.name,
+        wavName: wavFile.name,
+        samples: gsrPreview.samples.length
+      });
+    }
+  }, [previewDisabled, csvFile, wavFile, gsrPreview]);
+
   const handlePreviewClick = useCallback(() => {
     if (previewDisabled) {
+      logEvent("Preview click ignored", {
+        csvReady: Boolean(csvFile),
+        wavReady: Boolean(wavFile),
+        parseErrorPresent: Boolean(parseError),
+        previewParsed: Boolean(gsrPreview)
+      });
       return;
     }
     setPreviewVisible(true);
     setHasPreviewed(true);
-  }, [previewDisabled]);
+    logEvent("Preview staged", {
+      csvName: csvFile?.name ?? null,
+      wavName: wavFile?.name ?? null
+    });
+  }, [previewDisabled, csvFile, wavFile, gsrPreview, parseError]);
 
-  const analyzeMutation = useMutation({
+  const analyzeMutation = useMutation<AnalysisResponse, unknown, void>({
     mutationFn: async () => {
       if (!csvFile || !wavFile) {
         throw new Error("Please provide both CSV and WAV files.");
       }
+      logEvent("Analysis requested", {
+        csvName: csvFile.name,
+        wavName: wavFile.name,
+        ruleset,
+        preWindow,
+        postWindow
+      });
       const formData = new FormData();
       formData.append("gsr", csvFile);
       formData.append("audio", wavFile);
@@ -129,6 +182,18 @@ function App() {
       };
       const analyzeResponse = await apiClient.post<AnalysisResponse>("/api/analyze", payload);
       return analyzeResponse.data;
+    },
+    onSuccess: (data) => {
+      logEvent("Analysis completed", {
+        events: data.events.length,
+        audioDuration: data.audio_metadata.duration_sec,
+        gsrDuration: data.gsr_metadata.duration_sec
+      });
+    },
+    onError: (error) => {
+      logEvent("Analysis failed", {
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 

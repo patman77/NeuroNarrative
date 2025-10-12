@@ -118,6 +118,9 @@ and a responsive preview mirrors the event detection workflow exposed by the API
 * **Analysis controls** – An “Analyze session” call-to-action sits alongside the preview button. It
   stays disabled until both files are present, the CSV parses successfully, and the preview has been
   staged at least once after the latest upload, mirroring the frontend behaviour.
+* **Console telemetry** – Open the browser devtools (F12) to see structured log messages for each
+  major UX event (file selection, preview staging, playback, analysis) which helps trace the ingest
+  and review flow during debugging sessions.
 
 ## Local LLM integration (optional)
 By default the backend expects an [Ollama](https://ollama.com/) compatible endpoint available at
