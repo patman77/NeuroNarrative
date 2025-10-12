@@ -65,6 +65,30 @@ body {
   border-color: rgba(148, 163, 184, 0.7);
 }
 
+.preview-actions {
+  margin-top: 1.2rem;
+}
+
+.preview-actions button {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(30, 41, 59, 0.9);
+  color: inherit;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1.4rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease;
+}
+
+.preview-actions button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.preview-actions button:not(:disabled):hover {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
 .app-main {
   flex: 1;
   display: flex;

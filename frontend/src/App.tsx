@@ -97,6 +97,16 @@ function App() {
     });
   }, []);
 
+  const previewDisabled = !csvFile || !wavFile || !!parseError || !gsrPreview;
+
+  const handlePreviewClick = useCallback(() => {
+    if (previewDisabled) {
+      return;
+    }
+    setPreviewVisible(true);
+    setHasPreviewed(true);
+  }, [previewDisabled]);
+
   const analyzeMutation = useMutation({
     mutationFn: async () => {
       if (!csvFile || !wavFile) {
@@ -123,7 +133,6 @@ function App() {
   });
 
   const timelineEvents = useMemo(() => analyzeMutation.data?.events ?? [], [analyzeMutation.data]);
-  const previewDisabled = !csvFile || !wavFile || !!parseError || !gsrPreview;
   const analyzeDisabled = previewDisabled || !hasPreviewed;
 
   return (
@@ -134,16 +143,7 @@ function App() {
           <p>Align biosignals with conversation to surface emotion-linked summaries.</p>
         </div>
         <div className="app-header-actions">
-          <button
-            onClick={() => {
-              if (previewDisabled) {
-                return;
-              }
-              setPreviewVisible(true);
-              setHasPreviewed(true);
-            }}
-            disabled={previewDisabled}
-          >
+          <button onClick={handlePreviewClick} disabled={previewDisabled}>
             Preview
           </button>
           <button onClick={() => analyzeMutation.mutate()} disabled={analyzeMutation.isPending || analyzeDisabled}>
@@ -186,10 +186,17 @@ function App() {
             ) : isParsingCsv ? (
               <p className="muted">Parsing CSV export…</p>
             ) : (
-              <p className="muted">
-                Upload both files and click <strong>Preview</strong> to inspect the biosignal playback before running the
-                analysis.
-              </p>
+              <>
+                <p className="muted">
+                  Upload both files and click <strong>Preview</strong> to inspect the biosignal playback before running the
+                  analysis.
+                </p>
+                <div className="preview-actions">
+                  <button onClick={handlePreviewClick} disabled={previewDisabled}>
+                    Preview
+                  </button>
+                </div>
+              </>
             )}
           </section>
         )}
