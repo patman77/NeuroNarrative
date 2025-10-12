@@ -110,10 +110,13 @@ and a responsive preview mirrors the event detection workflow exposed by the API
   the aligned WAV recording. Helpful copy reminds analysts that files stay local to their machine.
 * **Detection rules** – Preset selector plus adjustable pre- and post-event windows so researchers can
   tune how aggressively physiological events are flagged before running an analysis.
-* **Signal preview** – A gauge, scrolling timeline, and synchronised audio playback highlight how the
-  uploaded GSR signal evolves between 1 kΩ and 6.5 kΩ while the WAV clip plays.
-* **Analysis controls** – An “Analyze session” call-to-action surfaces in the hero area, while the
-  lower status card reports when no events have been identified yet.
+* **Preview controls** – Once a valid CSV + WAV pair is uploaded, the **Preview** button becomes
+  active. Click it to parse the CSV, surface any formatting issues, and stage the data for playback.
+* **Signal preview** – After previewing, a gauge, scrolling timeline, and synchronised audio playback
+  highlight how the uploaded GSR signal evolves between 1 kΩ and 6.5 kΩ while the WAV clip plays.
+* **Analysis controls** – An “Analyze session” call-to-action sits alongside the preview button. It
+  stays disabled until both files are present and the CSV parses successfully, mirroring the frontend
+  behaviour.
 
 ## Local LLM integration (optional)
 By default the backend expects an [Ollama](https://ollama.com/) compatible endpoint available at

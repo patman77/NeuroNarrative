@@ -36,10 +36,12 @@ function App() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [gsrPreview, setGsrPreview] = useState<ParsedGsrResult | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [isParsingCsv, setIsParsingCsv] = useState<boolean>(false);
   const latestParseId = useRef(0);
   const [ruleset, setRuleset] = useState<string>("default");
   const [preWindow, setPreWindow] = useState<number>(5);
   const [postWindow, setPostWindow] = useState<number>(7);
+  const [previewVisible, setPreviewVisible] = useState<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -52,13 +54,16 @@ function App() {
   const handleCsvChange = useCallback(async (file: File | null) => {
     setCsvFile(file);
     setGsrPreview(null);
+    setPreviewVisible(false);
     const parseId = latestParseId.current + 1;
     latestParseId.current = parseId;
     if (!file) {
       setParseError(null);
+      setIsParsingCsv(false);
       return;
     }
     try {
+      setIsParsingCsv(true);
       const parsed = await parseGsrCsv(file);
       if (latestParseId.current !== parseId) {
         return;
@@ -71,11 +76,16 @@ function App() {
       }
       const message = error instanceof Error ? error.message : "Unable to parse CSV export.";
       setParseError(message);
+    } finally {
+      if (latestParseId.current === parseId) {
+        setIsParsingCsv(false);
+      }
     }
   }, []);
 
   const handleWavChange = useCallback((file: File | null) => {
     setWavFile(file);
+    setPreviewVisible(false);
     setAudioUrl((previous) => {
       if (previous) {
         URL.revokeObjectURL(previous);
@@ -110,7 +120,8 @@ function App() {
   });
 
   const timelineEvents = useMemo(() => analyzeMutation.data?.events ?? [], [analyzeMutation.data]);
-  const analyzeDisabled = !csvFile || !wavFile || !!parseError || !gsrPreview;
+  const previewDisabled = !csvFile || !wavFile || !!parseError || !gsrPreview;
+  const analyzeDisabled = previewDisabled;
 
   return (
     <div className="app-shell">
@@ -119,9 +130,17 @@ function App() {
           <h1>NeuroNarrative</h1>
           <p>Align biosignals with conversation to surface emotion-linked summaries.</p>
         </div>
-        <button onClick={() => analyzeMutation.mutate()} disabled={analyzeMutation.isPending || analyzeDisabled}>
-          {analyzeMutation.isPending ? "Analyzing…" : "Analyze session"}
-        </button>
+        <div className="app-header-actions">
+          <button
+            onClick={() => setPreviewVisible(true)}
+            disabled={previewDisabled}
+          >
+            Preview
+          </button>
+          <button onClick={() => analyzeMutation.mutate()} disabled={analyzeMutation.isPending || analyzeDisabled}>
+            {analyzeMutation.isPending ? "Analyzing…" : "Analyze session"}
+          </button>
+        </div>
       </header>
 
       <main className="app-main">
@@ -143,7 +162,7 @@ function App() {
           />
         </section>
 
-        {gsrPreview ? (
+        {previewVisible && gsrPreview ? (
           <SignalPreview
             data={gsrPreview}
             audioUrl={audioUrl}
@@ -155,8 +174,13 @@ function App() {
             <h2>Signal preview</h2>
             {parseError ? (
               <p className="error-text">{parseError}</p>
+            ) : isParsingCsv ? (
+              <p className="muted">Parsing CSV export…</p>
             ) : (
-              <p className="muted">Upload a CSV export to preview the biosignal before running the analysis.</p>
+              <p className="muted">
+                Upload both files and click <strong>Preview</strong> to inspect the biosignal playback before running the
+                analysis.
+              </p>
             )}
           </section>
         )}

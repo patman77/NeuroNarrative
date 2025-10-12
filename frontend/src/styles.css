@@ -28,6 +28,12 @@ body {
   backdrop-filter: blur(14px);
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .app-header h1 {
   margin: 0;
   font-size: 1.8rem;
