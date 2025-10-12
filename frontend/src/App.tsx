@@ -42,6 +42,7 @@ function App() {
   const [preWindow, setPreWindow] = useState<number>(5);
   const [postWindow, setPostWindow] = useState<number>(7);
   const [previewVisible, setPreviewVisible] = useState<boolean>(false);
+  const [hasPreviewed, setHasPreviewed] = useState<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -55,6 +56,7 @@ function App() {
     setCsvFile(file);
     setGsrPreview(null);
     setPreviewVisible(false);
+    setHasPreviewed(false);
     const parseId = latestParseId.current + 1;
     latestParseId.current = parseId;
     if (!file) {
@@ -86,6 +88,7 @@ function App() {
   const handleWavChange = useCallback((file: File | null) => {
     setWavFile(file);
     setPreviewVisible(false);
+    setHasPreviewed(false);
     setAudioUrl((previous) => {
       if (previous) {
         URL.revokeObjectURL(previous);
@@ -121,7 +124,7 @@ function App() {
 
   const timelineEvents = useMemo(() => analyzeMutation.data?.events ?? [], [analyzeMutation.data]);
   const previewDisabled = !csvFile || !wavFile || !!parseError || !gsrPreview;
-  const analyzeDisabled = previewDisabled;
+  const analyzeDisabled = previewDisabled || !hasPreviewed;
 
   return (
     <div className="app-shell">
@@ -132,7 +135,13 @@ function App() {
         </div>
         <div className="app-header-actions">
           <button
-            onClick={() => setPreviewVisible(true)}
+            onClick={() => {
+              if (previewDisabled) {
+                return;
+              }
+              setPreviewVisible(true);
+              setHasPreviewed(true);
+            }}
             disabled={previewDisabled}
           >
             Preview

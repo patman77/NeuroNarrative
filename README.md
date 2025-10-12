@@ -115,8 +115,8 @@ and a responsive preview mirrors the event detection workflow exposed by the API
 * **Signal preview** – After previewing, a gauge, scrolling timeline, and synchronised audio playback
   highlight how the uploaded GSR signal evolves between 1 kΩ and 6.5 kΩ while the WAV clip plays.
 * **Analysis controls** – An “Analyze session” call-to-action sits alongside the preview button. It
-  stays disabled until both files are present and the CSV parses successfully, mirroring the frontend
-  behaviour.
+  stays disabled until both files are present, the CSV parses successfully, and the preview has been
+  staged at least once after the latest upload, mirroring the frontend behaviour.
 
 ## Local LLM integration (optional)
 By default the backend expects an [Ollama](https://ollama.com/) compatible endpoint available at
