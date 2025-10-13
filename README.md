@@ -76,6 +76,26 @@ The backend automatically disables summarisation if no GPU is exposed to the con
 `summarizer` profile is skipped. Override this behaviour with
 `NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false` when you explicitly want CPU-only runs.
 
+#### macOS (or CPU-only) summariser setup
+
+The official Ollama image ships with large CUDA layers (≈3 GB). Docker Desktop on macOS can surface
+errors such as `failed to register layer: ... libggml-cuda.so: input/output error` while extracting
+those layers, especially on hosts without NVIDIA GPUs. To keep the workflow portable:
+
+1. [Install Ollama natively](https://ollama.com/download) on macOS and start it once with `ollama serve`.
+2. Pull the desired model, for example `ollama pull qwen2.5:7b-instruct-q4_K_M`.
+3. Launch the NeuroNarrative stack **without** the `summarizer` profile while pointing the backend at the
+   host service and disabling the GPU guard:
+
+   ```bash
+   NEURONARRATIVE_OLLAMA_URL=http://host.docker.internal:11434/api/generate \
+   NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false \
+   docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up --build
+   ```
+
+The backend will talk to the native Ollama runtime, so you still benefit from local summarisation without
+pulling the heavy CUDA-enabled container.
+
 ### Backend
 ```bash
 cd backend

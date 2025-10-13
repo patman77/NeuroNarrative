@@ -8,8 +8,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - NEURONARRATIVE_OLLAMA_URL=http://ollama:11434/api/generate
-      - NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=true
+      NEURONARRATIVE_OLLAMA_URL: ${NEURONARRATIVE_OLLAMA_URL:-http://ollama:11434/api/generate}
+      NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER: ${NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER:-true}
     volumes:
       - uploads:/tmp/neuronarrative
 
