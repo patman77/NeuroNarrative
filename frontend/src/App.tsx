@@ -153,18 +153,6 @@ function App() {
     });
   }, [previewDisabled, csvFile, wavFile, gsrPreview, parseError]);
 
-  // Auto-show preview when both files are ready
-  useEffect(() => {
-    if (!previewDisabled && csvFile && wavFile && gsrPreview && !hasPreviewed) {
-      setPreviewVisible(true);
-      setHasPreviewed(true);
-      logEvent("Preview auto-shown", {
-        csvName: csvFile.name,
-        wavName: wavFile.name
-      });
-    }
-  }, [previewDisabled, csvFile, wavFile, gsrPreview, hasPreviewed]);
-
   const analyzeMutation = useMutation<AnalysisResponse, unknown, void>({
     mutationFn: async () => {
       if (!csvFile || !wavFile) {
@@ -220,11 +208,7 @@ function App() {
           <p>Align biosignals with conversation to surface emotion-linked summaries.</p>
         </div>
         <div className="app-header-actions">
-          <button 
-            onClick={handlePreviewClick} 
-            disabled={previewDisabled}
-            title={previewDisabled ? "Upload both CSV and WAV files to enable preview" : "Show signal preview"}
-          >
+          <button onClick={handlePreviewClick} disabled={previewDisabled}>
             Preview
           </button>
           <button onClick={() => analyzeMutation.mutate()} disabled={analyzeMutation.isPending || analyzeDisabled}>

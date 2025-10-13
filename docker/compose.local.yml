@@ -40,7 +40,8 @@ services:
             - capabilities: [gpu]
     profiles:
       - summarizer
-    gpus: all
+    gpus:
+      - all
 
 volumes:
   uploads:
