@@ -41,7 +41,11 @@ services:
     profiles:
       - summarizer
     gpus:
-      - all
+      - driver: nvidia
+        count: all
+        capabilities:
+          - compute
+          - utility
 
 volumes:
   uploads:
