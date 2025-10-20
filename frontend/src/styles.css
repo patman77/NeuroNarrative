@@ -389,3 +389,61 @@ details p {
     align-items: flex-start;
   }
 }
+
+
+/* Navigation controls */
+.navigation-controls {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  padding: 1rem 0;
+  margin: 0.5rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.nav-button {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(30, 41, 59, 0.9);
+  color: inherit;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.nav-button:hover {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+/* Overview chart */
+.overview-chart {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.overview-chart h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  color: #94a3b8;
+}
+
+.overview-chart svg {
+  display: block;
+  margin: 0 auto;
+}
+
+/* Detail chart section */
+.detail-chart-section {
+  margin: 1.5rem 0;
+}
+
+.detail-chart-section h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  color: #94a3b8;
+}
