@@ -215,7 +215,7 @@ function Gauge({ value, min, max, baseline }: GaugeProps) {
   const clamped = clamp(value, min, max);
   const ratio = (clamped - min) / (max - min || 1);
   const startAngle = Math.PI;
-  const endAngle = 0;
+  const endAngle = 2 * Math.PI;  // Fixed: use 2π for top semicircle instead of 0 for bottom semicircle
   const pointerAngle = startAngle + (endAngle - startAngle) * ratio;
   const pointerInner = polarToCartesian(cx, cy, radius * 0.2, pointerAngle);
   const pointerTip = polarToCartesian(cx, cy, radius, pointerAngle);
