@@ -64,11 +64,133 @@ function useInterpolatedValue(samples: ParsedGsrSample[], timeSec: number): numb
   }, [samples, timeSec]);
 }
 
+function useInterpolatedSample(samples: ParsedGsrSample[], timeSec: number): ParsedGsrSample | null {
+  return useMemo(() => {
+    if (!samples.length) {
+      return null;
+    }
+    if (timeSec <= samples[0].timeSec) {
+      return samples[0];
+    }
+    if (timeSec >= samples[samples.length - 1].timeSec) {
+      return samples[samples.length - 1];
+    }
+
+    let left = 0;
+    let right = samples.length - 1;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      if (samples[mid].timeSec === timeSec) {
+        return samples[mid];
+      }
+      if (samples[mid].timeSec < timeSec) {
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+
+    const lowerIndex = Math.max(0, right);
+    const upperIndex = Math.min(samples.length - 1, left);
+    const lower = samples[lowerIndex];
+    const upper = samples[upperIndex];
+    if (upper.timeSec === lower.timeSec) {
+      return lower;
+    }
+    const ratio = (timeSec - lower.timeSec) / (upper.timeSec - lower.timeSec);
+    const clampedRatio = clamp(ratio, 0, 1);
+    
+    return {
+      timeSec,
+      value: lower.value + (upper.value - lower.value) * clampedRatio,
+      rawValue: lower.rawValue + (upper.rawValue - lower.rawValue) * clampedRatio,
+      // Baseline is a step function (changes only on normalize), so use lower sample's baseline
+      baseline: lower.baseline,
+      // Resistance is continuous, so interpolate it
+      resistance: lower.resistance !== undefined && upper.resistance !== undefined
+        ? lower.resistance + (upper.resistance - lower.resistance) * clampedRatio
+        : lower.resistance ?? upper.resistance
+    };
+  }, [samples, timeSec]);
+}
+
+// Calculate gauge position from baseline and resistance
+// Baseline represents the normalized center position (1-6.5 range)
+// Resistance decrease → needle moves RIGHT (higher gauge value)
+// Resistance increase → needle moves LEFT (lower gauge value)
+function calculateGaugePosition(
+  sample: ParsedGsrSample,
+  samples: ParsedGsrSample[],
+  hasBaseline: boolean,
+  hasResistance: boolean
+): number {
+  // If we have baseline, use it as the primary gauge position
+  if (hasBaseline && sample.baseline !== undefined) {
+    if (hasResistance && sample.resistance !== undefined) {
+      // Find the reference resistance for the current baseline period
+      // This is the resistance value when the current baseline was first established
+      let referenceResistance: number | undefined = undefined;
+      
+      // Look through samples up to current time to find the most recent baseline change point
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        
+        // Only look at samples up to current time
+        if (s.timeSec > sample.timeSec) {
+          break;
+        }
+        
+        // Check if this sample has a valid baseline and resistance
+        if (s.baseline === undefined || s.resistance === undefined) {
+          continue;
+        }
+        
+        // Check if this is the start of a baseline period matching current baseline
+        if (s.baseline === sample.baseline) {
+          // Is this the start of a new baseline period?
+          if (i === 0 || samples[i - 1].baseline !== sample.baseline) {
+            // Found baseline change point - use resistance at this point as reference
+            referenceResistance = s.resistance;
+            // Don't break - keep looking for more recent changes (in case baseline oscillates)
+          } else if (referenceResistance === undefined) {
+            // We're in the middle of a baseline period and haven't found the start yet
+            // This can happen if earlier samples are missing baseline data
+            referenceResistance = s.resistance;
+          }
+        }
+      }
+      
+      // If we found a reference resistance, calculate the needle position
+      if (referenceResistance !== undefined) {
+        // Calculate resistance change in kOhm
+        const resistanceDelta = sample.resistance - referenceResistance;
+        
+        // Convert resistance change to gauge units
+        // Negative scale: decrease resistance → move right (increase gauge value)
+        // Scale factor: 1 kOhm change ≈ 0.5 gauge units
+        const RESISTANCE_TO_GAUGE_SCALE = -0.5;
+        const gaugeAdjustment = resistanceDelta * RESISTANCE_TO_GAUGE_SCALE;
+        
+        // Calculate final position and clamp to valid range
+        const position = sample.baseline + gaugeAdjustment;
+        return clamp(position, DISPLAY_MIN, DISPLAY_MAX);
+      }
+    }
+    
+    // If no resistance data or couldn't find reference, just use baseline
+    return clamp(sample.baseline, DISPLAY_MIN, DISPLAY_MAX);
+  }
+  
+  // Fallback to the original value
+  return sample.value;
+}
+
 function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
   const start = polarToCartesian(cx, cy, r, endAngle);
   const end = polarToCartesian(cx, cy, r, startAngle);
   const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+  // Use sweep-flag=1 (clockwise) to draw the arc through the TOP for a top semicircle
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
 }
 
 function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
@@ -82,9 +204,10 @@ interface GaugeProps {
   value: number;
   min: number;
   max: number;
+  baseline?: number;
 }
 
-function Gauge({ value, min, max }: GaugeProps) {
+function Gauge({ value, min, max, baseline }: GaugeProps) {
   const width = 320;
   const height = 200;
   const cx = width / 2;
@@ -93,10 +216,18 @@ function Gauge({ value, min, max }: GaugeProps) {
   const clamped = clamp(value, min, max);
   const ratio = (clamped - min) / (max - min || 1);
   const startAngle = Math.PI;
-  const endAngle = 0;
+  const endAngle = 2 * Math.PI;  // Fixed: use 2π for top semicircle instead of 0 for bottom semicircle
   const pointerAngle = startAngle + (endAngle - startAngle) * ratio;
   const pointerInner = polarToCartesian(cx, cy, radius * 0.2, pointerAngle);
   const pointerTip = polarToCartesian(cx, cy, radius, pointerAngle);
+
+  // Calculate baseline marker position if provided
+  let baselineAngle: number | null = null;
+  if (baseline !== undefined) {
+    const clampedBaseline = clamp(baseline, min, max);
+    const baselineRatio = (clampedBaseline - min) / (max - min || 1);
+    baselineAngle = startAngle + (endAngle - startAngle) * baselineRatio;
+  }
 
   const ticks = Array.from({ length: 6 }, (_, index) => {
     const tickRatio = index / 5;
@@ -108,6 +239,36 @@ function Gauge({ value, min, max }: GaugeProps) {
     return { inner, outer, label, labelPoint };
   });
 
+  // Create gauge arc segments with baseline marker
+  const gaugeSegments = [];
+  if (baselineAngle !== null) {
+    // Create segments with gap at baseline position
+    const gapSize = 0.05; // Size of the gap in radians
+    const beforeBaselineStart = startAngle;
+    const beforeBaselineEnd = baselineAngle - gapSize;
+    const afterBaselineStart = baselineAngle + gapSize;
+    const afterBaselineEnd = endAngle;
+
+    if (beforeBaselineEnd > beforeBaselineStart) {
+      gaugeSegments.push({
+        path: describeArc(cx, cy, radius, beforeBaselineStart, beforeBaselineEnd),
+        key: 'before-baseline'
+      });
+    }
+    if (afterBaselineEnd > afterBaselineStart) {
+      gaugeSegments.push({
+        path: describeArc(cx, cy, radius, afterBaselineStart, afterBaselineEnd),
+        key: 'after-baseline'
+      });
+    }
+  } else {
+    // No baseline, draw full arc
+    gaugeSegments.push({
+      path: describeArc(cx, cy, radius, startAngle, endAngle),
+      key: 'full-arc'
+    });
+  }
+
   return (
     <svg className="gauge" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Current GSR ${clamped.toFixed(2)}`}>
       <defs>
@@ -116,7 +277,23 @@ function Gauge({ value, min, max }: GaugeProps) {
           <stop offset="100%" stopColor="#26c2a6" />
         </linearGradient>
       </defs>
-      <path d={describeArc(cx, cy, radius, startAngle, endAngle)} fill="none" stroke="url(#gaugeGradient)" strokeWidth={14} />
+      {gaugeSegments.map((segment) => (
+        <path key={segment.key} d={segment.path} fill="none" stroke="url(#gaugeGradient)" strokeWidth={14} />
+      ))}
+      {baselineAngle !== null && (
+        <g>
+          {/* Baseline marker line */}
+          <line
+            x1={polarToCartesian(cx, cy, radius - 18, baselineAngle).x}
+            y1={polarToCartesian(cx, cy, radius - 18, baselineAngle).y}
+            x2={polarToCartesian(cx, cy, radius + 5, baselineAngle).x}
+            y2={polarToCartesian(cx, cy, radius + 5, baselineAngle).y}
+            stroke="#ff9800"
+            strokeWidth={3}
+            strokeLinecap="round"
+          />
+        </g>
+      )}
       {ticks.map((tick) => (
         <g key={tick.label}>
           <line x1={tick.inner.x} y1={tick.inner.y} x2={tick.outer.x} y2={tick.outer.y} stroke="#0f3a47" strokeWidth={2} />
@@ -147,12 +324,15 @@ function SignalChart({ samples, currentTime, currentValue, min, max }: SignalCha
   const pxPerSecond = 80;
   const chartHeight = 220;
   const topPadding = 16;
-  const bottomPadding = 24;
+  const bottomPadding = 40;
+  const leftPadding = 60;
+  const rightPadding = 10;
   const usableHeight = chartHeight - topPadding - bottomPadding;
   const startTime = samples[0].timeSec;
   const endTime = samples[samples.length - 1].timeSec;
   const duration = Math.max(endTime - startTime, 0.001);
   const width = Math.max(720, Math.round(duration * pxPerSecond));
+  const totalWidth = width + leftPadding + rightPadding;
 
   const path = useMemo(() => {
     if (!samples.length) {
@@ -160,44 +340,216 @@ function SignalChart({ samples, currentTime, currentValue, min, max }: SignalCha
     }
     const pathCommands: string[] = [];
     samples.forEach((sample, index) => {
-      const x = ((sample.timeSec - startTime) / duration) * width;
+      const x = leftPadding + ((sample.timeSec - startTime) / duration) * width;
       const ratio = (sample.value - min) / (max - min || 1);
       const clampedRatio = clamp(ratio, 0, 1);
       const y = topPadding + (1 - clampedRatio) * usableHeight;
       pathCommands.push(`${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
     });
     return pathCommands.join(" ");
-  }, [samples, duration, width, min, max, startTime, usableHeight, topPadding]);
+  }, [samples, duration, width, min, max, startTime, usableHeight, topPadding, leftPadding]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
       return;
     }
-    const indicatorPosition = ((currentTime - startTime) / duration) * width;
+    const indicatorPosition = leftPadding + ((currentTime - startTime) / duration) * width;
     if (!Number.isFinite(indicatorPosition)) {
       return;
     }
-    const safePosition = clamp(indicatorPosition, 0, width);
+    const safePosition = clamp(indicatorPosition, leftPadding, width + leftPadding);
     const padding = container.clientWidth * 0.4;
     const target = Math.max(0, safePosition - padding);
     container.scrollTo({ left: target, behavior: "auto" });
-  }, [currentTime, duration, startTime, width]);
+  }, [currentTime, duration, startTime, width, leftPadding]);
 
-  const indicatorX = clamp(((currentTime - startTime) / duration) * width, 0, width);
+  const indicatorX = clamp(leftPadding + ((currentTime - startTime) / duration) * width, leftPadding, width + leftPadding);
   const indicatorYTop = topPadding;
-  const indicatorYBottom = chartHeight - bottomPadding + 12;
+  const indicatorYBottom = chartHeight - bottomPadding;
 
   const currentRatio = (currentValue - min) / (max - min || 1);
   const currentY = topPadding + (1 - clamp(currentRatio, 0, 1)) * usableHeight;
 
+  // Generate Y-axis ticks
+  const yTicks = useMemo(() => {
+    const numTicks = 5;
+    return Array.from({ length: numTicks }, (_, i) => {
+      const ratio = i / (numTicks - 1);
+      const value = min + (max - min) * ratio;
+      const y = topPadding + (1 - ratio) * usableHeight;
+      return { y, value: value.toFixed(1) };
+    });
+  }, [min, max, topPadding, usableHeight]);
+
+  // Generate X-axis ticks (every 10 seconds)
+  const xTicks = useMemo(() => {
+    const tickInterval = 10; // seconds
+    const ticks: { x: number; label: string }[] = [];
+    for (let t = 0; t <= duration; t += tickInterval) {
+      const x = leftPadding + (t / duration) * width;
+      ticks.push({ x, label: formatTime(t) });
+    }
+    return ticks;
+  }, [duration, width, leftPadding]);
+
   return (
     <div className="signal-chart" ref={containerRef}>
-      <svg width={width} height={chartHeight} role="img" aria-label="GSR timeline">
-        <rect x={0} y={0} width={width} height={chartHeight} fill="#f7fafc" />
+      <svg width={totalWidth} height={chartHeight} role="img" aria-label="GSR timeline">
+        <rect x={0} y={0} width={totalWidth} height={chartHeight} fill="#f7fafc" />
+        
+        {/* Y-axis */}
+        <line x1={leftPadding} y1={topPadding} x2={leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
+        {yTicks.map((tick, i) => (
+          <g key={i}>
+            <line x1={leftPadding - 5} y1={tick.y} x2={leftPadding} y2={tick.y} stroke="#333" strokeWidth={1} />
+            <text x={leftPadding - 10} y={tick.y} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="#333">
+              {tick.value}
+            </text>
+            <line x1={leftPadding} y1={tick.y} x2={width + leftPadding} y2={tick.y} stroke="#e0e0e0" strokeWidth={1} strokeDasharray="2 2" />
+          </g>
+        ))}
+        
+        {/* X-axis */}
+        <line x1={leftPadding} y1={chartHeight - bottomPadding} x2={width + leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
+        {xTicks.map((tick, i) => (
+          <g key={i}>
+            <line x1={tick.x} y1={chartHeight - bottomPadding} x2={tick.x} y2={chartHeight - bottomPadding + 5} stroke="#333" strokeWidth={1} />
+            <text x={tick.x} y={chartHeight - bottomPadding + 18} textAnchor="middle" fontSize="10" fill="#333">
+              {tick.label}
+            </text>
+          </g>
+        ))}
+        
+        {/* Signal path */}
         <path d={path} fill="none" stroke="#0f6f8f" strokeWidth={2} strokeLinecap="round" />
+        
+        {/* Current position indicator */}
         <line x1={indicatorX} y1={indicatorYTop} x2={indicatorX} y2={indicatorYBottom} stroke="#f44336" strokeWidth={2} strokeDasharray="6 6" />
         <circle cx={indicatorX} cy={currentY} r={5} fill="#f44336" stroke="#fff" strokeWidth={2} />
+      </svg>
+    </div>
+  );
+}
+
+interface OverviewChartProps {
+  samples: ParsedGsrSample[];
+  currentTime: number;
+  min: number;
+  max: number;
+  onSeek: (time: number) => void;
+}
+
+function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChartProps) {
+  const chartWidth = 920;
+  const chartHeight = 120;
+  const topPadding = 10;
+  const bottomPadding = 30;
+  const leftPadding = 60;
+  const rightPadding = 10;
+  const usableHeight = chartHeight - topPadding - bottomPadding;
+  const usableWidth = chartWidth - leftPadding - rightPadding;
+  const startTime = samples[0]?.timeSec ?? 0;
+  const endTime = samples[samples.length - 1]?.timeSec ?? 0;
+  const duration = Math.max(endTime - startTime, 0.001);
+
+  const path = useMemo(() => {
+    if (!samples.length) {
+      return "";
+    }
+    const pathCommands: string[] = [];
+    samples.forEach((sample, index) => {
+      const x = leftPadding + ((sample.timeSec - startTime) / duration) * usableWidth;
+      const ratio = (sample.value - min) / (max - min || 1);
+      const clampedRatio = clamp(ratio, 0, 1);
+      const y = topPadding + (1 - clampedRatio) * usableHeight;
+      pathCommands.push(`${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+    });
+    return pathCommands.join(" ");
+  }, [samples, duration, usableWidth, min, max, startTime, usableHeight, topPadding, leftPadding]);
+
+  const indicatorX = clamp(leftPadding + ((currentTime - startTime) / duration) * usableWidth, leftPadding, usableWidth + leftPadding);
+
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const relativeX = clamp(x - leftPadding, 0, usableWidth);
+    const clickedTime = startTime + (relativeX / usableWidth) * duration;
+    onSeek(clickedTime);
+  };
+
+  // Generate Y-axis ticks
+  const yTicks = useMemo(() => {
+    const numTicks = 3;
+    return Array.from({ length: numTicks }, (_, i) => {
+      const ratio = i / (numTicks - 1);
+      const value = min + (max - min) * ratio;
+      const y = topPadding + (1 - ratio) * usableHeight;
+      return { y, value: value.toFixed(1) };
+    });
+  }, [min, max, topPadding, usableHeight]);
+
+  // Generate X-axis ticks (every 30 seconds)
+  const xTicks = useMemo(() => {
+    const tickInterval = 30; // seconds
+    const ticks: { x: number; label: string }[] = [];
+    for (let t = 0; t <= duration; t += tickInterval) {
+      const x = leftPadding + (t / duration) * usableWidth;
+      ticks.push({ x, label: formatTime(t) });
+    }
+    return ticks;
+  }, [duration, usableWidth, leftPadding]);
+
+  return (
+    <div className="overview-chart">
+      <h3>Overview - Full Recording</h3>
+      <svg 
+        width={chartWidth} 
+        height={chartHeight} 
+        role="img" 
+        aria-label="Full GSR overview - click to navigate"
+        onClick={handleClick}
+        style={{ cursor: 'pointer' }}
+      >
+        <rect x={0} y={0} width={chartWidth} height={chartHeight} fill="#f0f4f7" />
+        
+        {/* Y-axis */}
+        <line x1={leftPadding} y1={topPadding} x2={leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
+        {yTicks.map((tick, i) => (
+          <g key={i}>
+            <line x1={leftPadding - 5} y1={tick.y} x2={leftPadding} y2={tick.y} stroke="#333" strokeWidth={1} />
+            <text x={leftPadding - 10} y={tick.y} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="#333">
+              {tick.value}
+            </text>
+            <line x1={leftPadding} y1={tick.y} x2={usableWidth + leftPadding} y2={tick.y} stroke="#d0d0d0" strokeWidth={1} strokeDasharray="2 2" />
+          </g>
+        ))}
+        
+        {/* X-axis */}
+        <line x1={leftPadding} y1={chartHeight - bottomPadding} x2={usableWidth + leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
+        {xTicks.map((tick, i) => (
+          <g key={i}>
+            <line x1={tick.x} y1={chartHeight - bottomPadding} x2={tick.x} y2={chartHeight - bottomPadding + 5} stroke="#333" strokeWidth={1} />
+            <text x={tick.x} y={chartHeight - bottomPadding + 18} textAnchor="middle" fontSize="10" fill="#333">
+              {tick.label}
+            </text>
+          </g>
+        ))}
+        
+        {/* Signal path */}
+        <path d={path} fill="none" stroke="#0f6f8f" strokeWidth={1.5} strokeLinecap="round" />
+        
+        {/* Current position indicator bar */}
+        <line 
+          x1={indicatorX} 
+          y1={topPadding} 
+          x2={indicatorX} 
+          y2={chartHeight - bottomPadding} 
+          stroke="#f44336" 
+          strokeWidth={3} 
+          opacity={0.7}
+        />
       </svg>
     </div>
   );
@@ -218,8 +570,16 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
 
   const effectiveDuration = audioDuration ?? data.endTimeSec - data.startTimeSec;
 
+  const currentSample = useInterpolatedSample(data.samples, currentTime + data.startTimeSec);
   const currentValue = useInterpolatedValue(data.samples, currentTime + data.startTimeSec);
-  const displayValue = clamp(currentValue, gaugeMin, gaugeMax);
+  
+  // Calculate the gauge position using baseline and resistance if available
+  const gaugeValue = currentSample 
+    ? calculateGaugePosition(currentSample, data.samples, data.hasBaseline, data.hasResistance)
+    : currentValue;
+  
+  const displayValue = clamp(gaugeValue, gaugeMin, gaugeMax);
+  const currentBaseline = currentSample?.baseline;
 
   useEffect(() => {
     setCurrentTime(0);
@@ -310,6 +670,37 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
     }
   };
 
+  const seekTo = (time: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    
+    const relativeTime = time - data.startTimeSec;
+    const clampedTime = clamp(relativeTime, 0, effectiveDuration);
+    audio.currentTime = clampedTime;
+    setCurrentTime(clampedTime);
+    logEvent("Seeked to time", { time: clampedTime });
+  };
+
+  const jumpToBeginning = () => {
+    seekTo(data.startTimeSec);
+  };
+
+  const jumpToEnd = () => {
+    seekTo(data.endTimeSec);
+  };
+
+  const skipForward = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    seekTo(audio.currentTime + data.startTimeSec + 10);
+  };
+
+  const skipBackward = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    seekTo(audio.currentTime + data.startTimeSec - 10);
+  };
+
   const progress = effectiveDuration ? Math.min(currentTime / effectiveDuration, 1) : 0;
 
   return (
@@ -342,8 +733,25 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
         )}
       </div>
 
+      {audioUrl && (
+        <div className="navigation-controls">
+          <button type="button" onClick={jumpToBeginning} className="nav-button" title="Jump to beginning">
+            ⏮ Beginning
+          </button>
+          <button type="button" onClick={skipBackward} className="nav-button" title="Skip backward 10s">
+            ⏪ -10s
+          </button>
+          <button type="button" onClick={skipForward} className="nav-button" title="Skip forward 10s">
+            +10s ⏩
+          </button>
+          <button type="button" onClick={jumpToEnd} className="nav-button" title="Jump to end">
+            End ⏭
+          </button>
+        </div>
+      )}
+
       <div className="gauge-panel">
-        <Gauge value={displayValue} min={gaugeMin} max={gaugeMax} />
+        <Gauge value={displayValue} min={gaugeMin} max={gaugeMax} baseline={currentBaseline} />
         <div className="gauge-metrics">
           <div>
             <span className="metric-label">Current</span>
@@ -355,6 +763,18 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
               {clampedRangeMin.toFixed(1)} – {clampedRangeMax.toFixed(1)}
             </span>
           </div>
+          {currentBaseline !== undefined && (
+            <div>
+              <span className="metric-label">Baseline</span>
+              <span className="metric-value">{currentBaseline.toFixed(2)}</span>
+            </div>
+          )}
+          {currentSample?.resistance !== undefined && (
+            <div>
+              <span className="metric-label">Resistance</span>
+              <span className="metric-value">{currentSample.resistance.toFixed(2)} kΩ</span>
+            </div>
+          )}
           {data.scalingFactor !== 1 && (
             <div>
               <span className="metric-label">Scale</span>
@@ -364,13 +784,24 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
         </div>
       </div>
 
-      <SignalChart
+      <OverviewChart
         samples={data.samples}
         currentTime={currentTime + data.startTimeSec}
-        currentValue={currentValue}
         min={chartMin}
         max={chartMax}
+        onSeek={seekTo}
       />
+
+      <div className="detail-chart-section">
+        <h3>Detail View</h3>
+        <SignalChart
+          samples={data.samples}
+          currentTime={currentTime + data.startTimeSec}
+          currentValue={currentValue}
+          min={chartMin}
+          max={chartMax}
+        />
+      </div>
 
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" hidden />} 
     </section>

@@ -4,6 +4,8 @@ export interface ParsedGsrSample {
   timeSec: number;
   value: number;
   rawValue: number;
+  baseline?: number;
+  resistance?: number;
 }
 
 export interface ParsedGsrResult {
@@ -15,6 +17,10 @@ export interface ParsedGsrResult {
   maxValue: number;
   startTimeSec: number;
   endTimeSec: number;
+  hasBaseline: boolean;
+  hasResistance: boolean;
+  baselineColumn?: string;
+  resistanceColumn?: string;
 }
 
 const FIELD_PRIORITY: Array<{ match: RegExp; bonus: number }> = [
@@ -199,6 +205,10 @@ export async function parseGsrCsv(file: File): Promise<ParsedGsrResult> {
           return;
         }
 
+        // Find baseline and resistance columns
+        const baselineField = fields.find((field) => normalizeField(field).includes("baseline"));
+        const resistanceField = fields.find((field) => normalizeField(field).includes("resistance"));
+
         const { field: valueField, divisor, min, max } = chooseValueField(fields, rows);
         const timeScale = determineTimeScaling(timeField, timeValues);
 
@@ -211,11 +221,29 @@ export async function parseGsrCsv(file: File): Promise<ParsedGsrResult> {
           }
           const timeSec = rawTime / timeScale;
           const scaledValue = rawValue / divisor;
-          samples.push({
+          
+          const sample: ParsedGsrSample = {
             timeSec,
             value: scaledValue,
             rawValue: rawValue
-          });
+          };
+
+          // Add baseline and resistance if available
+          if (baselineField) {
+            const baselineValue = sanitizeNumber(row[baselineField]);
+            if (baselineValue !== null) {
+              sample.baseline = baselineValue;
+            }
+          }
+
+          if (resistanceField) {
+            const resistanceValue = sanitizeNumber(row[resistanceField]);
+            if (resistanceValue !== null) {
+              sample.resistance = resistanceValue;
+            }
+          }
+
+          samples.push(sample);
         }
 
         if (!samples.length) {
@@ -244,7 +272,11 @@ export async function parseGsrCsv(file: File): Promise<ParsedGsrResult> {
           minValue: min,
           maxValue: max,
           startTimeSec,
-          endTimeSec
+          endTimeSec,
+          hasBaseline: Boolean(baselineField),
+          hasResistance: Boolean(resistanceField),
+          baselineColumn: baselineField,
+          resistanceColumn: resistanceField
         });
       },
       error: (error) => {
