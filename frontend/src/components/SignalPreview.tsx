@@ -104,9 +104,9 @@ function useInterpolatedSample(samples: ParsedGsrSample[], timeSec: number): Par
       timeSec,
       value: lower.value + (upper.value - lower.value) * clampedRatio,
       rawValue: lower.rawValue + (upper.rawValue - lower.rawValue) * clampedRatio,
-      baseline: lower.baseline !== undefined && upper.baseline !== undefined
-        ? lower.baseline + (upper.baseline - lower.baseline) * clampedRatio
-        : lower.baseline ?? upper.baseline,
+      // Baseline is a step function (changes only on normalize), so use lower sample's baseline
+      baseline: lower.baseline,
+      // Resistance is continuous, so interpolate it
       resistance: lower.resistance !== undefined && upper.resistance !== undefined
         ? lower.resistance + (upper.resistance - lower.resistance) * clampedRatio
         : lower.resistance ?? upper.resistance
@@ -126,49 +126,59 @@ function calculateGaugePosition(
 ): number {
   // If we have baseline, use it as the primary gauge position
   if (hasBaseline && sample.baseline !== undefined) {
-    // Find the reference resistance at the current baseline
-    // (the resistance when this baseline was normalized)
-    let referenceResistance = sample.resistance;
-    
-    // Look backwards in time to find where the current baseline started
-    // to determine the reference resistance
-    for (let i = samples.length - 1; i >= 0; i--) {
-      const s = samples[i];
-      if (s.timeSec > sample.timeSec) {
-        continue;
+    if (hasResistance && sample.resistance !== undefined) {
+      // Find the reference resistance for the current baseline period
+      // This is the resistance value when the current baseline was first established
+      let referenceResistance: number | undefined = undefined;
+      
+      // Look through samples up to current time to find the most recent baseline change point
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        
+        // Only look at samples up to current time
+        if (s.timeSec > sample.timeSec) {
+          break;
+        }
+        
+        // Check if this sample has a valid baseline and resistance
+        if (s.baseline === undefined || s.resistance === undefined) {
+          continue;
+        }
+        
+        // Check if this is the start of a baseline period matching current baseline
+        if (s.baseline === sample.baseline) {
+          // Is this the start of a new baseline period?
+          if (i === 0 || samples[i - 1].baseline !== sample.baseline) {
+            // Found baseline change point - use resistance at this point as reference
+            referenceResistance = s.resistance;
+            // Don't break - keep looking for more recent changes (in case baseline oscillates)
+          } else if (referenceResistance === undefined) {
+            // We're in the middle of a baseline period and haven't found the start yet
+            // This can happen if earlier samples are missing baseline data
+            referenceResistance = s.resistance;
+          }
+        }
       }
       
-      // Check if this is the start of the current baseline period
-      if (i > 0 && s.baseline === sample.baseline && samples[i - 1].baseline !== sample.baseline) {
-        // Found baseline change point - use resistance at this point as reference
-        referenceResistance = s.resistance;
-        break;
-      }
-      
-      // If we're at the beginning of the data and baseline matches, use first resistance
-      if (i === 0 && s.baseline === sample.baseline) {
-        referenceResistance = s.resistance;
-        break;
+      // If we found a reference resistance, calculate the needle position
+      if (referenceResistance !== undefined) {
+        // Calculate resistance change in kOhm
+        const resistanceDelta = sample.resistance - referenceResistance;
+        
+        // Convert resistance change to gauge units
+        // Negative scale: decrease resistance → move right (increase gauge value)
+        // Scale factor: 1 kOhm change ≈ 0.5 gauge units
+        const RESISTANCE_TO_GAUGE_SCALE = -0.5;
+        const gaugeAdjustment = resistanceDelta * RESISTANCE_TO_GAUGE_SCALE;
+        
+        // Calculate final position and clamp to valid range
+        const position = sample.baseline + gaugeAdjustment;
+        return clamp(position, DISPLAY_MIN, DISPLAY_MAX);
       }
     }
     
-    if (hasResistance && sample.resistance !== undefined && referenceResistance !== undefined) {
-      // Calculate resistance delta in kOhm
-      const resistanceDelta = sample.resistance - referenceResistance;
-      
-      // Convert resistance change to gauge units
-      // Scale: 2 rectangles = 0.15 units
-      // The gauge has gradations, and we need to calibrate the sensitivity
-      // Typical GSR resistance changes are in the range of 0-5 kOhm
-      // Let's use a scale factor: 1 kOhm change ≈ 0.5 gauge units
-      const RESISTANCE_TO_GAUGE_SCALE = -0.5; // Negative because decrease = right (increase gauge value)
-      const gaugeAdjustment = resistanceDelta * RESISTANCE_TO_GAUGE_SCALE;
-      
-      return sample.baseline + gaugeAdjustment;
-    }
-    
-    // If no resistance data, just use baseline
-    return sample.baseline;
+    // If no resistance data or couldn't find reference, just use baseline
+    return clamp(sample.baseline, DISPLAY_MIN, DISPLAY_MAX);
   }
   
   // Fallback to the original value
