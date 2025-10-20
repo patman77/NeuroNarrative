@@ -64,6 +64,117 @@ function useInterpolatedValue(samples: ParsedGsrSample[], timeSec: number): numb
   }, [samples, timeSec]);
 }
 
+function useInterpolatedSample(samples: ParsedGsrSample[], timeSec: number): ParsedGsrSample | null {
+  return useMemo(() => {
+    if (!samples.length) {
+      return null;
+    }
+    if (timeSec <= samples[0].timeSec) {
+      return samples[0];
+    }
+    if (timeSec >= samples[samples.length - 1].timeSec) {
+      return samples[samples.length - 1];
+    }
+
+    let left = 0;
+    let right = samples.length - 1;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      if (samples[mid].timeSec === timeSec) {
+        return samples[mid];
+      }
+      if (samples[mid].timeSec < timeSec) {
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+
+    const lowerIndex = Math.max(0, right);
+    const upperIndex = Math.min(samples.length - 1, left);
+    const lower = samples[lowerIndex];
+    const upper = samples[upperIndex];
+    if (upper.timeSec === lower.timeSec) {
+      return lower;
+    }
+    const ratio = (timeSec - lower.timeSec) / (upper.timeSec - lower.timeSec);
+    const clampedRatio = clamp(ratio, 0, 1);
+    
+    return {
+      timeSec,
+      value: lower.value + (upper.value - lower.value) * clampedRatio,
+      rawValue: lower.rawValue + (upper.rawValue - lower.rawValue) * clampedRatio,
+      baseline: lower.baseline !== undefined && upper.baseline !== undefined
+        ? lower.baseline + (upper.baseline - lower.baseline) * clampedRatio
+        : lower.baseline ?? upper.baseline,
+      resistance: lower.resistance !== undefined && upper.resistance !== undefined
+        ? lower.resistance + (upper.resistance - lower.resistance) * clampedRatio
+        : lower.resistance ?? upper.resistance
+    };
+  }, [samples, timeSec]);
+}
+
+// Calculate gauge position from baseline and resistance
+// Baseline represents the normalized center position (1-6.5 range)
+// Resistance decrease → needle moves RIGHT (higher gauge value)
+// Resistance increase → needle moves LEFT (lower gauge value)
+function calculateGaugePosition(
+  sample: ParsedGsrSample,
+  samples: ParsedGsrSample[],
+  hasBaseline: boolean,
+  hasResistance: boolean
+): number {
+  // If we have baseline, use it as the primary gauge position
+  if (hasBaseline && sample.baseline !== undefined) {
+    // Find the reference resistance at the current baseline
+    // (the resistance when this baseline was normalized)
+    let referenceResistance = sample.resistance;
+    
+    // Look backwards in time to find where the current baseline started
+    // to determine the reference resistance
+    for (let i = samples.length - 1; i >= 0; i--) {
+      const s = samples[i];
+      if (s.timeSec > sample.timeSec) {
+        continue;
+      }
+      
+      // Check if this is the start of the current baseline period
+      if (i > 0 && s.baseline === sample.baseline && samples[i - 1].baseline !== sample.baseline) {
+        // Found baseline change point - use resistance at this point as reference
+        referenceResistance = s.resistance;
+        break;
+      }
+      
+      // If we're at the beginning of the data and baseline matches, use first resistance
+      if (i === 0 && s.baseline === sample.baseline) {
+        referenceResistance = s.resistance;
+        break;
+      }
+    }
+    
+    if (hasResistance && sample.resistance !== undefined && referenceResistance !== undefined) {
+      // Calculate resistance delta in kOhm
+      const resistanceDelta = sample.resistance - referenceResistance;
+      
+      // Convert resistance change to gauge units
+      // Scale: 2 rectangles = 0.15 units
+      // The gauge has gradations, and we need to calibrate the sensitivity
+      // Typical GSR resistance changes are in the range of 0-5 kOhm
+      // Let's use a scale factor: 1 kOhm change ≈ 0.5 gauge units
+      const RESISTANCE_TO_GAUGE_SCALE = -0.5; // Negative because decrease = right (increase gauge value)
+      const gaugeAdjustment = resistanceDelta * RESISTANCE_TO_GAUGE_SCALE;
+      
+      return sample.baseline + gaugeAdjustment;
+    }
+    
+    // If no resistance data, just use baseline
+    return sample.baseline;
+  }
+  
+  // Fallback to the original value
+  return sample.value;
+}
+
 function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
   const start = polarToCartesian(cx, cy, r, endAngle);
   const end = polarToCartesian(cx, cy, r, startAngle);
@@ -82,9 +193,10 @@ interface GaugeProps {
   value: number;
   min: number;
   max: number;
+  baseline?: number;
 }
 
-function Gauge({ value, min, max }: GaugeProps) {
+function Gauge({ value, min, max, baseline }: GaugeProps) {
   const width = 320;
   const height = 200;
   const cx = width / 2;
@@ -98,6 +210,14 @@ function Gauge({ value, min, max }: GaugeProps) {
   const pointerInner = polarToCartesian(cx, cy, radius * 0.2, pointerAngle);
   const pointerTip = polarToCartesian(cx, cy, radius, pointerAngle);
 
+  // Calculate baseline marker position if provided
+  let baselineAngle: number | null = null;
+  if (baseline !== undefined) {
+    const clampedBaseline = clamp(baseline, min, max);
+    const baselineRatio = (clampedBaseline - min) / (max - min || 1);
+    baselineAngle = startAngle + (endAngle - startAngle) * baselineRatio;
+  }
+
   const ticks = Array.from({ length: 6 }, (_, index) => {
     const tickRatio = index / 5;
     const angle = startAngle + (endAngle - startAngle) * tickRatio;
@@ -108,6 +228,36 @@ function Gauge({ value, min, max }: GaugeProps) {
     return { inner, outer, label, labelPoint };
   });
 
+  // Create gauge arc segments with baseline marker
+  const gaugeSegments = [];
+  if (baselineAngle !== null) {
+    // Create segments with gap at baseline position
+    const gapSize = 0.05; // Size of the gap in radians
+    const beforeBaselineStart = startAngle;
+    const beforeBaselineEnd = baselineAngle - gapSize;
+    const afterBaselineStart = baselineAngle + gapSize;
+    const afterBaselineEnd = endAngle;
+
+    if (beforeBaselineEnd > beforeBaselineStart) {
+      gaugeSegments.push({
+        path: describeArc(cx, cy, radius, beforeBaselineStart, beforeBaselineEnd),
+        key: 'before-baseline'
+      });
+    }
+    if (afterBaselineEnd > afterBaselineStart) {
+      gaugeSegments.push({
+        path: describeArc(cx, cy, radius, afterBaselineStart, afterBaselineEnd),
+        key: 'after-baseline'
+      });
+    }
+  } else {
+    // No baseline, draw full arc
+    gaugeSegments.push({
+      path: describeArc(cx, cy, radius, startAngle, endAngle),
+      key: 'full-arc'
+    });
+  }
+
   return (
     <svg className="gauge" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Current GSR ${clamped.toFixed(2)}`}>
       <defs>
@@ -116,7 +266,23 @@ function Gauge({ value, min, max }: GaugeProps) {
           <stop offset="100%" stopColor="#26c2a6" />
         </linearGradient>
       </defs>
-      <path d={describeArc(cx, cy, radius, startAngle, endAngle)} fill="none" stroke="url(#gaugeGradient)" strokeWidth={14} />
+      {gaugeSegments.map((segment) => (
+        <path key={segment.key} d={segment.path} fill="none" stroke="url(#gaugeGradient)" strokeWidth={14} />
+      ))}
+      {baselineAngle !== null && (
+        <g>
+          {/* Baseline marker line */}
+          <line
+            x1={polarToCartesian(cx, cy, radius - 18, baselineAngle).x}
+            y1={polarToCartesian(cx, cy, radius - 18, baselineAngle).y}
+            x2={polarToCartesian(cx, cy, radius + 5, baselineAngle).x}
+            y2={polarToCartesian(cx, cy, radius + 5, baselineAngle).y}
+            stroke="#ff9800"
+            strokeWidth={3}
+            strokeLinecap="round"
+          />
+        </g>
+      )}
       {ticks.map((tick) => (
         <g key={tick.label}>
           <line x1={tick.inner.x} y1={tick.inner.y} x2={tick.outer.x} y2={tick.outer.y} stroke="#0f3a47" strokeWidth={2} />
@@ -218,8 +384,16 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
 
   const effectiveDuration = audioDuration ?? data.endTimeSec - data.startTimeSec;
 
+  const currentSample = useInterpolatedSample(data.samples, currentTime + data.startTimeSec);
   const currentValue = useInterpolatedValue(data.samples, currentTime + data.startTimeSec);
-  const displayValue = clamp(currentValue, gaugeMin, gaugeMax);
+  
+  // Calculate the gauge position using baseline and resistance if available
+  const gaugeValue = currentSample 
+    ? calculateGaugePosition(currentSample, data.samples, data.hasBaseline, data.hasResistance)
+    : currentValue;
+  
+  const displayValue = clamp(gaugeValue, gaugeMin, gaugeMax);
+  const currentBaseline = currentSample?.baseline;
 
   useEffect(() => {
     setCurrentTime(0);
@@ -343,7 +517,7 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
       </div>
 
       <div className="gauge-panel">
-        <Gauge value={displayValue} min={gaugeMin} max={gaugeMax} />
+        <Gauge value={displayValue} min={gaugeMin} max={gaugeMax} baseline={currentBaseline} />
         <div className="gauge-metrics">
           <div>
             <span className="metric-label">Current</span>
@@ -355,6 +529,18 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
               {clampedRangeMin.toFixed(1)} – {clampedRangeMax.toFixed(1)}
             </span>
           </div>
+          {currentBaseline !== undefined && (
+            <div>
+              <span className="metric-label">Baseline</span>
+              <span className="metric-value">{currentBaseline.toFixed(2)}</span>
+            </div>
+          )}
+          {currentSample?.resistance !== undefined && (
+            <div>
+              <span className="metric-label">Resistance</span>
+              <span className="metric-value">{currentSample.resistance.toFixed(2)} kΩ</span>
+            </div>
+          )}
           {data.scalingFactor !== 1 && (
             <div>
               <span className="metric-label">Scale</span>
