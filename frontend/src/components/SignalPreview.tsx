@@ -503,7 +503,6 @@ function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChart
 
   return (
     <div className="overview-chart">
-      <h3>Overview - Full Recording</h3>
       <svg 
         width={chartWidth} 
         height={chartHeight} 
@@ -703,6 +702,25 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
 
   const progress = effectiveDuration ? Math.min(currentTime / effectiveDuration, 1) : 0;
 
+  const jumpToTime = (seconds: number) => {
+    seekTo(seconds + data.startTimeSec);
+  };
+
+  const jumpToQuarter = () => {
+    const quarterTime = effectiveDuration * 0.25;
+    jumpToTime(quarterTime);
+  };
+
+  const jumpToHalf = () => {
+    const halfTime = effectiveDuration * 0.5;
+    jumpToTime(halfTime);
+  };
+
+  const jumpToThreeQuarters = () => {
+    const threeQuarterTime = effectiveDuration * 0.75;
+    jumpToTime(threeQuarterTime);
+  };
+
   return (
     <section className="signal-preview card">
       <div className="signal-preview-header">
@@ -736,13 +754,22 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
       {audioUrl && (
         <div className="navigation-controls">
           <button type="button" onClick={jumpToBeginning} className="nav-button" title="Jump to beginning">
-            ⏮ Beginning
+            ⏮ Start
           </button>
           <button type="button" onClick={skipBackward} className="nav-button" title="Skip backward 10s">
             ⏪ -10s
           </button>
           <button type="button" onClick={skipForward} className="nav-button" title="Skip forward 10s">
             +10s ⏩
+          </button>
+          <button type="button" onClick={jumpToQuarter} className="nav-button" title="Jump to 25%">
+            25%
+          </button>
+          <button type="button" onClick={jumpToHalf} className="nav-button" title="Jump to 50%">
+            50%
+          </button>
+          <button type="button" onClick={jumpToThreeQuarters} className="nav-button" title="Jump to 75%">
+            75%
           </button>
           <button type="button" onClick={jumpToEnd} className="nav-button" title="Jump to end">
             End ⏭
@@ -784,16 +811,25 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
         </div>
       </div>
 
-      <OverviewChart
-        samples={data.samples}
-        currentTime={currentTime + data.startTimeSec}
-        min={chartMin}
-        max={chartMax}
-        onSeek={seekTo}
-      />
+      <div className="overview-section">
+        <h3 className="section-title">📊 Full Recording Overview</h3>
+        <p className="section-description">
+          Click anywhere on the timeline below to jump to that point. The red line shows your current position.
+        </p>
+        <OverviewChart
+          samples={data.samples}
+          currentTime={currentTime + data.startTimeSec}
+          min={chartMin}
+          max={chartMax}
+          onSeek={seekTo}
+        />
+      </div>
 
       <div className="detail-chart-section">
-        <h3>Detail View</h3>
+        <h3 className="section-title">🔍 Detail View (Zoomed)</h3>
+        <p className="section-description">
+          This view shows a zoomed-in portion of the signal that follows the current playback position.
+        </p>
         <SignalChart
           samples={data.samples}
           currentTime={currentTime + data.startTimeSec}
