@@ -253,6 +253,32 @@ export async function parseGsrCsv(file: File): Promise<ParsedGsrResult> {
 
         samples.sort((a, b) => a.timeSec - b.timeSec);
 
+        // Auto-scale resistance values if they're out of the expected range
+        // Expected range for resistance should be similar to gauge range (1-6.5)
+        // If median resistance is > 10, it's likely scaled incorrectly (e.g., in wrong unit)
+        if (resistanceField && samples.some(s => s.resistance !== undefined)) {
+          const resistanceValues = samples
+            .map(s => s.resistance)
+            .filter((r): r is number => r !== undefined);
+          
+          if (resistanceValues.length > 0) {
+            // Calculate median resistance
+            const sortedResistances = [...resistanceValues].sort((a, b) => a - b);
+            const medianResistance = sortedResistances[Math.floor(sortedResistances.length / 2)];
+            
+            // If median resistance is > 10, scale down by 10
+            // This handles cases where resistance is in wrong unit or incorrectly scaled
+            if (medianResistance > 10) {
+              const resistanceScaleFactor = 10;
+              for (const sample of samples) {
+                if (sample.resistance !== undefined) {
+                  sample.resistance = sample.resistance / resistanceScaleFactor;
+                }
+              }
+            }
+          }
+        }
+
         const startTimeSec = samples[0].timeSec;
         const endTimeSec = samples[samples.length - 1].timeSec;
         const diffs: number[] = [];

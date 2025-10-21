@@ -269,10 +269,21 @@ function Gauge({ value, min, max, baseline }: GaugeProps) {
     });
   }
 
+  // Calculate gradient coordinates to span the entire gauge arc (left to right)
+  const gradientStart = polarToCartesian(cx, cy, radius, startAngle);
+  const gradientEnd = polarToCartesian(cx, cy, radius, endAngle);
+
   return (
     <svg className="gauge" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Current GSR ${clamped.toFixed(2)}`}>
       <defs>
-        <linearGradient id="gaugeGradient" x1="0" x2="1" y1="0" y2="0">
+        <linearGradient 
+          id="gaugeGradient" 
+          x1={gradientStart.x} 
+          y1={gradientStart.y} 
+          x2={gradientEnd.x} 
+          y2={gradientEnd.y}
+          gradientUnits="userSpaceOnUse"
+        >
           <stop offset="0%" stopColor="#1f9bcf" />
           <stop offset="100%" stopColor="#26c2a6" />
         </linearGradient>
