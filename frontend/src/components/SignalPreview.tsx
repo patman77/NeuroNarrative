@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import WaveSurfer from "wavesurfer.js";
 import type { ParsedGsrResult, ParsedGsrSample } from "../utils/gsrParser";
 import { logEvent } from "../utils/logger";
 import type { SummarizedEvent } from "../App";
@@ -644,7 +645,8 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events }: Overv
 }
 
 export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, events, seekRef }: SignalPreviewProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const waveformRef = useRef<HTMLDivElement | null>(null);
+  const wsRef = useRef<WaveSurfer | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
@@ -670,117 +672,103 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
   const currentBaseline = currentSample?.baseline;
 
   useEffect(() => {
+    if (!audioUrl || !waveformRef.current) {
+      // No audio — just reset state and log
+      wsRef.current?.destroy();
+      wsRef.current = null;
+      setCurrentTime(0);
+      setIsPlaying(false);
+      setAudioDuration(null);
+      logEvent("Preview data refreshed", {
+        csvColumn: data.sourceColumn,
+        sampleCount: data.samples.length,
+        audioAvailable: Boolean(audioUrl)
+      });
+      return;
+    }
+
+    // Destroy previous WaveSurfer instance before creating a new one
+    wsRef.current?.destroy();
     setCurrentTime(0);
     setIsPlaying(false);
     setAudioDuration(null);
+
+    const ws = WaveSurfer.create({
+      container: waveformRef.current,
+      waveColor: "rgba(56, 189, 248, 0.6)",
+      progressColor: "rgba(59, 130, 246, 0.9)",
+      cursorColor: "#f44336",
+      height: 64,
+      barWidth: 2,
+      barGap: 1,
+      barRadius: 2,
+      normalize: true,
+      url: audioUrl,
+    });
+
+    ws.on("ready", () => {
+      setAudioDuration(ws.getDuration());
+      logEvent("Audio metadata loaded", { duration: ws.getDuration() });
+    });
+    ws.on("play", () => {
+      setIsPlaying(true);
+      logEvent("Audio playback started");
+    });
+    ws.on("pause", () => {
+      setIsPlaying(false);
+      logEvent("Audio playback paused", { currentTime: ws.getCurrentTime() });
+    });
+    ws.on("finish", () => {
+      setIsPlaying(false);
+      setCurrentTime(ws.getDuration());
+      logEvent("Audio playback ended");
+    });
+    ws.on("audioprocess", (time: number) => {
+      setCurrentTime(time);
+    });
+    ws.on("seeking", (time: number) => {
+      setCurrentTime(time);
+    });
+
+    wsRef.current = ws;
+
     logEvent("Preview data refreshed", {
       csvColumn: data.sourceColumn,
       sampleCount: data.samples.length,
-      audioAvailable: Boolean(audioUrl)
+      audioAvailable: true
     });
-  }, [audioUrl, data.sourceColumn, data.startTimeSec, data.endTimeSec]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) {
-      return;
-    }
-    const handleLoaded = () => {
-      setAudioDuration(audio.duration);
-      logEvent("Audio metadata loaded", {
-        duration: audio.duration,
-        readyState: audio.readyState
-      });
-    };
-    const handlePlay = () => {
-      setIsPlaying(true);
-      logEvent("Audio playback started");
-    };
-    const handlePause = () => {
-      setIsPlaying(false);
-      logEvent("Audio playback paused", { currentTime: audio.currentTime });
-    };
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setCurrentTime(audio.duration || 0);
-      logEvent("Audio playback ended");
-    };
-    const handleTimeUpdate = () => {
-      // Only update from timeupdate when RAF loop is not running (i.e. paused/seeking)
-      if (audio.paused) {
-        setCurrentTime(audio.currentTime);
-      }
-    };
-
-    audio.addEventListener("loadedmetadata", handleLoaded);
-    audio.addEventListener("play", handlePlay);
-    audio.addEventListener("pause", handlePause);
-    audio.addEventListener("ended", handleEnded);
-    audio.addEventListener("timeupdate", handleTimeUpdate);
 
     return () => {
-      audio.removeEventListener("loadedmetadata", handleLoaded);
-      audio.removeEventListener("play", handlePlay);
-      audio.removeEventListener("pause", handlePause);
-      audio.removeEventListener("ended", handleEnded);
-      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      ws.destroy();
+      wsRef.current = null;
     };
-  }, [audioUrl]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !isPlaying) {
-      return undefined;
-    }
-    let rafId: number;
-    const update = () => {
-      setCurrentTime(audio.currentTime);
-      rafId = requestAnimationFrame(update);
-    };
-    rafId = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUrl, data.sourceColumn, data.startTimeSec, data.endTimeSec]);
 
   const seekTo = (time: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
+    const ws = wsRef.current;
+    if (!ws) return;
     const relativeTime = time - data.startTimeSec;
     const clampedTime = clamp(relativeTime, 0, effectiveDuration);
-    audio.currentTime = clampedTime;
+    ws.seekTo(clampedTime / effectiveDuration);
     setCurrentTime(clampedTime);
     logEvent("Seeked to time", { time: clampedTime });
   };
 
   // Expose seekTo via seekRef
   useEffect(() => {
-    if (seekRef) {
-      seekRef.current = seekTo;
-    }
-    return () => {
-      if (seekRef) {
-        seekRef.current = null;
-      }
-    };
+    if (seekRef) seekRef.current = seekTo;
   });
 
   const togglePlayback = () => {
-    const audio = audioRef.current;
-    if (!audio) {
-      logEvent("Playback toggle ignored", { audioAvailable: false });
-      return;
-    }
-    if (audio.paused) {
-      logEvent("Playback toggle", { action: "play" });
-      audio.play().catch((error) => {
-        setIsPlaying(false);
-        logEvent("Audio playback failed to start", {
-          message: error instanceof Error ? error.message : String(error)
-        });
-      });
+    const ws = wsRef.current;
+    if (!ws) return;
+    if (isPlaying) {
+      ws.pause();
+      logEvent("Playback toggle", { action: "pause", currentTime: ws.getCurrentTime() });
     } else {
-      logEvent("Playback toggle", { action: "pause", currentTime: audio.currentTime });
-      audio.pause();
+      ws.play();
+      logEvent("Playback toggle", { action: "play" });
     }
   };
 
@@ -793,18 +781,12 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
   };
 
   const skipForward = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    seekTo(audio.currentTime + data.startTimeSec + 10);
+    seekTo(currentTime + data.startTimeSec + 10);
   };
 
   const skipBackward = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    seekTo(audio.currentTime + data.startTimeSec - 10);
+    seekTo(currentTime + data.startTimeSec - 10);
   };
-
-  const progress = effectiveDuration ? Math.min(currentTime / effectiveDuration, 1) : 0;
 
   const jumpToTime = (seconds: number) => {
     seekTo(seconds + data.startTimeSec);
@@ -839,16 +821,16 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
           {audioFileName && <p className="muted small">Audio: {audioFileName}</p>}
         </div>
         {audioUrl ? (
-          <div className="playback-controls">
-            <button type="button" onClick={togglePlayback} className="playback-button">
-              {isPlaying ? "Pause" : "Play"}
-            </button>
-            <div className="playback-timeline">
-              <div className="playback-progress" style={{ width: `${progress * 100}%` }} />
+          <div className="waveform-container">
+            <div ref={waveformRef} className="waveform" />
+            <div className="playback-controls">
+              <button type="button" onClick={togglePlayback} className="playback-button">
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+              <span className="playback-time">
+                {formatTime(currentTime)} / {formatTime(effectiveDuration ?? 0)}
+              </span>
             </div>
-            <span className="playback-time">
-              {formatTime(currentTime)} / {formatTime(effectiveDuration ?? 0)}
-            </span>
           </div>
         ) : (
           <p className="muted">Add a WAV file to enable playback.</p>
@@ -946,7 +928,6 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
         />
       </div>
 
-      {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" hidden />}
     </section>
   );
 }
