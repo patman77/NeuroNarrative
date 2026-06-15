@@ -500,9 +500,13 @@ function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChart
     });
   }, [min, max, topPadding, usableHeight]);
 
-  // Generate X-axis ticks (every 30 seconds)
+  // Generate X-axis ticks — pick interval so labels never overlap
   const xTicks = useMemo(() => {
-    const tickInterval = 30; // seconds
+    const minPxPerLabel = 55; // minimum pixels between tick labels
+    const maxTicks = Math.max(2, Math.floor(usableWidth / minPxPerLabel));
+    const minIntervalSec = duration / maxTicks;
+    const niceIntervals = [10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
+    const tickInterval = niceIntervals.find((i) => i >= minIntervalSec) ?? niceIntervals[niceIntervals.length - 1];
     const ticks: { x: number; label: string }[] = [];
     for (let t = 0; t <= duration; t += tickInterval) {
       const x = leftPadding + (t / duration) * usableWidth;

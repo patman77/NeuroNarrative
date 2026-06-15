@@ -308,12 +308,13 @@ body {
 }
 
 .gauge-tick {
-  fill: rgba(15, 23, 42, 0.9);
-  font-size: 0.7rem;
+  fill: #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .gauge-value {
-  fill: #0f172a;
+  fill: #f1f5f9;
   font-size: 2.8rem;
   font-weight: 700;
 }
@@ -329,13 +330,13 @@ body {
   font-size: 0.75rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(15, 23, 42, 0.7);
+  color: #94a3b8;
 }
 
 .metric-value {
   font-size: 1.2rem;
   font-weight: 600;
-  color: #0f172a;
+  color: #f1f5f9;
 }
 
 .signal-chart {
