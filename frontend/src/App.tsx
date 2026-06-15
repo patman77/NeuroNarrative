@@ -57,12 +57,27 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    apiClient.get("/api/health").then(() => {
-      if (!cancelled) setBackendOnline(true);
-    }).catch(() => {
-      if (!cancelled) setBackendOnline(false);
-    });
-    return () => { cancelled = true; };
+    let timerId: ReturnType<typeof setTimeout>;
+
+    const check = () => {
+      apiClient.get("/api/health").then(() => {
+        if (!cancelled) {
+          setBackendOnline(true);
+          timerId = setTimeout(check, 30_000);
+        }
+      }).catch(() => {
+        if (!cancelled) {
+          setBackendOnline(false);
+          timerId = setTimeout(check, 5_000);
+        }
+      });
+    };
+
+    check();
+    return () => {
+      cancelled = true;
+      clearTimeout(timerId);
+    };
   }, []);
 
   useEffect(() => {
@@ -245,11 +260,7 @@ function App() {
     ? "Waiting for CSV to parse"
     : undefined;
 
-  const analyzeButtonTitle = previewDisabled
-    ? previewButtonTitle
-    : backendOnline === false
-    ? "Backend is offline – start uvicorn first"
-    : undefined;
+  const analyzeButtonTitle = previewDisabled ? previewButtonTitle : undefined;
 
   const backendPillClass =
     backendOnline === null ? "status-pill status-checking" :
@@ -281,7 +292,7 @@ function App() {
           </button>
           <button
             onClick={handleAnalyzeClick}
-            disabled={analyzeMutation.isPending || analyzeDisabled || backendOnline === false}
+            disabled={analyzeMutation.isPending || analyzeDisabled}
             title={analyzeButtonTitle}
           >
             {analyzeMutation.isPending ? "Analyzing…" : "Analyze session"}
