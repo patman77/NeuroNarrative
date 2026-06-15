@@ -166,6 +166,7 @@ export async function parseGsrCsv(file: File): Promise<ParsedGsrResult> {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
+        try {
         if (results.errors.length) {
           reject(new Error(results.errors[0].message));
           return;
@@ -304,6 +305,9 @@ export async function parseGsrCsv(file: File): Promise<ParsedGsrResult> {
           baselineColumn: baselineField,
           resistanceColumn: resistanceField
         });
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
       },
       error: (error) => {
         reject(error);
