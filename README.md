@@ -1,168 +1,164 @@
 # NeuroNarrative
-From biosignal spikes to meaning: align, detect, and summarize speech around GSR/EEG events
 
-## Overview
-NeuroNarrative is an open-source playground for synchronising physiological recordings with spoken language.
-The current prototype focuses on galvanic skin response (GSR) CSV exports aligned with WAV audio files.
-Uploaded sessions are processed locally: the backend validates inputs, extracts basic signal metadata,
-performs rule-based event detection, and prepares transcript windows for later summarisation.
+> Align biosignals with conversation to surface emotion-linked summaries.
 
-> **Project status:** early prototype. Audio transcription is stubbed, and the frontend only offers a minimal
-> workflow for uploading files and reviewing detected events.
+NeuroNarrative is an in-development, local-first web application that synchronises galvanic skin response (GSR) recordings with audio sessions to help surface physiologically significant moments in conversation. All data stays on your machine.
+
+**Status: early development – core pipeline working, several areas still incomplete (see [TODO.md](TODO.md)).**
+
+---
+
+## What works today
+
+| Area | Status |
+|------|--------|
+| GSR CSV upload & parsing (column auto-detect) | ✅ |
+| WAV audio upload with drag-and-drop | ✅ |
+| Session preview: semicircular resistance gauge | ✅ |
+| Session preview: WaveSurfer.js waveform + playback | ✅ |
+| Session preview: full-recording overview chart (click-to-seek) | ✅ |
+| Session preview: zoomed detail chart | ✅ |
+| Timeline navigation (Start / -10s / +10s / 25% / 50% / 75% / End) | ✅ |
+| Event detection (derivative + changepoint via `ruptures`) | ✅ |
+| Detection rulesets: sensitive / balanced / strict | ✅ |
+| Configurable pre/post event context windows | ✅ |
+| Event markers overlaid on overview and detail charts | ✅ |
+| Event list with score, ΔkΩ, and jump-to buttons | ✅ |
+| Audio transcription (Whisper `tiny` model, on-device) | ✅ |
+| Transcript timeline with word-level click-to-seek | ✅ |
+| LLM summarisation per event (Ollama, optional) | ✅ |
+| Session export: CSV, JSON, SRT, PDF | ✅ |
+| Backend health status pill with auto-retry | ✅ |
+| Backend unit tests (pytest, 10 passing) | ✅ |
+| Frontend E2E tests (Playwright, 3 passing) | ✅ |
+| CI: GitHub Actions (frontend build + typecheck, backend pytest) | ✅ |
+| Speaker diarisation | ❌ not started |
+| EEG ingestion | ❌ not started |
+| Desktop packaging (Electron / PyInstaller) | ❌ not started |
+
+---
 
 ## Repository layout
+
 ```
 .
-├── backend/               # FastAPI service for ingestion, event detection, and summaries
+├── backend/                  # FastAPI service
 │   ├── app/
-│   │   ├── api/           # HTTP routes and schemas
-│   │   ├── core/          # Configuration helpers
-│   │   └── services/      # Signal processing, storage, and summarisation helpers
-│   ├── pyproject.toml     # Python project definition and dependencies
-│   └── tests/             # Pytest suite
-├── docker/                # Container build files and compose stacks
+│   │   ├── api/              # HTTP routes and request/response schemas
+│   │   ├── core/             # Settings (pydantic-settings)
+│   │   ├── services/         # Signal processing, event detection, transcription, summarisation
+│   │   └── utils/
+│   ├── tests/                # pytest suite (test_analysis.py, test_events.py)
+│   └── pyproject.toml
+├── docker/                   # Compose stack for local development
 │   ├── backend.Dockerfile
 │   ├── frontend.Dockerfile
 │   └── compose.local.yml
-├── docs/                  # Architecture and design documentation
-└── frontend/              # React + Vite single-page application shell
-    ├── src/
-    ├── package.json
-    └── vite.config.ts
+├── docs/
+│   └── system-design.md      # Aspirational architecture reference
+├── frontend/                 # React + Vite + TypeScript
+│   ├── src/
+│   │   ├── components/       # SignalPreview, EventTimeline, TranscriptTimeline, UploadPanel, RuleSelector
+│   │   ├── utils/            # gsrParser, logger
+│   │   └── App.tsx
+│   ├── tests/e2e/            # Playwright tests
+│   └── vite.config.ts
+└── TODO.md                   # Detailed feature status
 ```
+
+---
 
 ## Getting started
 
-### Docker (backend + frontend)
-
-The repository ships with a local compose stack located under `docker/`. Ensure that Docker Desktop
-is running in **Linux container** mode (or that your Docker Engine context points to a Linux host),
-then launch the stack from the repository root:
-
-```bash
-# Git Bash / WSL / macOS / Linux
-docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up --build
-
-# Windows PowerShell
-docker compose --project-directory "$PWD" -f docker/compose.local.yml up --build
-
-# Git Bash on Windows when you need a Windows-formatted path
-docker compose --project-directory "$(pwd -W)" -f docker/compose.local.yml up --build
-```
-
-This starts the FastAPI backend on <http://localhost:8000> and the Vite frontend on
-<http://localhost:5173>. Uploads are stored inside a named volume so successive runs can reuse
-temporary files.
-
-On Windows make sure Docker Desktop is using the **WSL 2 / Linux** backend (`Settings → General → Use the WSL 2 based engine`).
-If you have multiple Docker contexts, verify that `docker context show` returns a Linux-capable
-context (for Docker Desktop this is typically `desktop-linux`).
-
-Speech summarisation uses a local LLM. When you have an NVIDIA GPU (e.g. RTX 3070 Ti) available, start
-the Ollama sidecar as well:
-
-```bash
-# Git Bash / WSL / macOS / Linux
-docker compose --project-directory "$(pwd)" -f docker/compose.local.yml --profile summarizer up --build
-
-# Windows PowerShell
-docker compose --project-directory "$PWD" -f docker/compose.local.yml --profile summarizer up --build
-
-# Git Bash on Windows with Windows-style path
-docker compose --project-directory "$(pwd -W)" -f docker/compose.local.yml --profile summarizer up --build
-```
-
-The backend automatically disables summarisation if no GPU is exposed to the container or if the
-`summarizer` profile is skipped. Override this behaviour with
-`NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false` when you explicitly want CPU-only runs.
-
-#### macOS (or CPU-only) summariser setup
-
-The official Ollama image ships with large CUDA layers (≈3 GB). Docker Desktop on macOS can surface
-errors such as `failed to register layer: ... libggml-cuda.so: input/output error` while extracting
-those layers, especially on hosts without NVIDIA GPUs. To keep the workflow portable:
-
-1. [Install Ollama natively](https://ollama.com/download) on macOS and start it once with `ollama serve`.
-2. Pull the desired model, for example `ollama pull qwen2.5:7b-instruct-q4_K_M`.
-3. Launch the NeuroNarrative stack **without** the `summarizer` profile while pointing the backend at the
-   host service and disabling the GPU guard:
-
-   ```bash
-   NEURONARRATIVE_OLLAMA_URL=http://host.docker.internal:11434/api/generate \
-   NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false \
-   docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up --build
-   ```
-
-The backend will talk to the native Ollama runtime, so you still benefit from local summarisation without
-pulling the heavy CUDA-enabled container.
-
 ### Backend
+
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate
-pip install -e .[dev]
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 uvicorn app.main:app --reload
 ```
 
-The API exposes:
-- `GET /api/health` – service availability check.
-- `POST /api/upload` – accept a GSR CSV + aligned WAV audio and store them in a temporary directory.
-- `POST /api/analyze` – orchestrate signal ingestion, event detection, and (optional) local LLM summarisation.
+The API runs on <http://localhost:8000>. Key endpoints:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/health` | Liveness check |
+| `POST` | `/api/upload` | Accept GSR CSV + WAV, store in temp dir |
+| `POST` | `/api/analyze` | Run event detection, transcription, and optional summarisation |
 
 ### Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-The Vite dev server proxies API calls to `http://localhost:8000` by default.
+The Vite dev server runs on <http://localhost:5173> (or the next free port) and proxies `/api/*` to the backend. CORS is configured to accept any `localhost` port, so port conflicts are handled automatically.
 
-#### Frontend preview
-The single-page client focuses on getting sessions into the system quickly while surfacing the
-most important configuration toggles. Two primary panels handle data ingestion and rule selection,
-and a responsive preview mirrors the event detection workflow exposed by the API.
+### Docker (both services together)
 
-![NeuroNarrative upload and rule selection interface](docs/images/frontend-overview.png)
-
-* **Session uploads** – Drag-and-drop (or file picker) inputs for the galvanic skin response CSV and
-  the aligned WAV recording. Helpful copy reminds analysts that files stay local to their machine.
-* **Detection rules** – Preset selector plus adjustable pre- and post-event windows so researchers can
-  tune how aggressively physiological events are flagged before running an analysis.
-* **Preview controls** – Once a valid CSV + WAV pair is uploaded, the **Preview** button (available
-  in the header and in the preview panel itself) becomes active. Click it to parse the CSV, surface
-  any formatting issues, and stage the data for playback.
-* **Signal preview** – After previewing, a gauge, scrolling timeline, and synchronised audio playback
-  highlight how the uploaded GSR signal evolves between 1 kΩ and 6.5 kΩ while the WAV clip plays.
-* **Analysis controls** – An “Analyze session” call-to-action sits alongside the preview button. It
-  stays disabled until both files are present, the CSV parses successfully, and the preview has been
-  staged at least once after the latest upload, mirroring the frontend behaviour.
-* **Console telemetry** – Open the browser devtools (F12) to see structured log messages for each
-  major UX event (file selection, preview staging, playback, analysis) which helps trace the ingest
-  and review flow during debugging sessions.
-
-## Local LLM integration (optional)
-By default the backend expects an [Ollama](https://ollama.com/) compatible endpoint available at
-`http://127.0.0.1:11434/api/generate`. Configure via environment variables:
 ```bash
-NEURONARRATIVE_OLLAMA_URL=http://localhost:11434/api/generate
-NEURONARRATIVE_OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M
-NEURONARRATIVE_SUMMARIZER_ENABLED=false  # disable summarisation when no local model is running
-NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false  # opt out of GPU auto-detection guard
+docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up --build
 ```
+
+---
+
+## Local LLM (optional)
+
+Event summaries are generated by a local Ollama model. Summarisation is disabled automatically when Ollama is unreachable.
+
+```bash
+# Install Ollama (https://ollama.com), then:
+ollama pull qwen2.5:7b-instruct-q4_K_M
+ollama serve
+```
+
+Relevant environment variables:
+
+```bash
+NEURONARRATIVE_OLLAMA_URL=http://127.0.0.1:11434/api/generate
+NEURONARRATIVE_OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M
+NEURONARRATIVE_SUMMARIZER_ENABLED=false          # disable entirely
+NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER=false  # skip GPU guard
+```
+
+On macOS with Apple Silicon, run Ollama natively (not inside Docker) and point the backend at `http://host.docker.internal:11434/api/generate` if using the compose stack.
+
+---
+
+## Audio transcription
+
+Transcription uses OpenAI Whisper (`tiny` model, ~72 MB, downloaded on first use). It runs on-device inside the backend process. If `openai-whisper` is not installed, the backend falls back gracefully and returns an empty transcript.
+
+```bash
+# Already included in the venv if you ran pip install -e ".[dev,asr]"
+pip install openai-whisper
+```
+
+---
 
 ## Testing
-Backend tests run with:
+
 ```bash
-cd backend
-pytest
+# Backend
+cd backend && pytest tests/ -v
+
+# Frontend E2E (requires dev server running on port 5175)
+cd frontend && npx playwright test
 ```
 
-Frontend tests are not yet wired; add Vitest/Playwright once the UI hardens.
+CI runs both on every push via `.github/workflows/ci.yml`.
 
-## Roadmap
-- Integrate Whisper or Vosk for on-device transcription and diarisation.
-- Expand event rules (SCR peaks, clustering) and expose a ruleset editor in the UI.
-- Add waveform + chart visualisations and export formats (CSV/JSON/SRT/PDF).
-- Wire EEG ingestion pipelines alongside GSR to extend multimodal coverage.
+---
+
+## What's next
+
+See [TODO.md](TODO.md) for the full breakdown. The most impactful gaps are:
+
+- **Speaker diarisation** — distinguish who is speaking around each event
+- **Transcript timeline UX** — currently shows words but needs better visual design
+- **EEG support** — no ingestion pipeline yet
+- **Desktop packaging** — ship as a standalone app without requiring a terminal

@@ -1,3 +1,11 @@
+# NeuroNarrative – System Architecture & Development Plan
+
+> **Note: this is an aspirational design document**, not a description of the current implementation.
+> It captures the intended long-term architecture and has not been updated to track what is actually built.
+> For current status, see [README.md](../README.md) and [TODO.md](../TODO.md).
+
+---
+
 # NeuroNarrative Web Application – System Architecture & Development Plan
 
 ## 1. Product Vision
