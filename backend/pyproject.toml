@@ -2,7 +2,6 @@
 name = "neuronarrative-backend"
 version = "0.1.0"
 description = "FastAPI backend for NeuroNarrative multimodal analysis"
-readme = "../README.md"
 authors = [
     { name = "NeuroNarrative Team", email = "dev@example.com" }
 ]
