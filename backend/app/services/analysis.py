@@ -64,6 +64,10 @@ async def run_analysis(payload: AnalysisRequest, settings: Settings) -> dict[str
         "events": event_payloads,
         "gsr_metadata": gsr_metadata.model_dump(),
         "audio_metadata": audio_metadata.model_dump(),
+        "transcript": [
+            {"text": w.text, "start": w.start, "end": w.end}
+            for w in words
+        ],
     }
 
 

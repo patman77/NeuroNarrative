@@ -35,10 +35,17 @@ class AnalysisRequest(BaseModel):
     post_event_window_sec: float = Field(default=7.0)
 
 
+class TranscriptWord(BaseModel):
+    text: str
+    start: float | None = None
+    end: float | None = None
+
+
 class AnalysisResponse(BaseModel):
     events: list[SummarizedEvent]
     gsr_metadata: SignalMetadata
     audio_metadata: SignalMetadata
+    transcript: list[TranscriptWord] = []
 
 
 class UploadResponse(BaseModel):
