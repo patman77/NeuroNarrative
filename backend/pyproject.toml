@@ -27,3 +27,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 asr = ["openai-whisper>=20231117"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

@@ -1,10 +1,14 @@
 """Unit tests for detect_events in app.services.events."""
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
-from app.services.events import detect_events
+pytest.importorskip("ruptures")
+pytest.importorskip("scipy")
+
+import numpy as np  # noqa: E402
+
+from app.services.events import detect_events  # noqa: E402
 
 
 def _make_timestamps(n: int, hz: float = 10.0) -> np.ndarray:

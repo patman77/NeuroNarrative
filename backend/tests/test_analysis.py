@@ -1,11 +1,15 @@
 """Unit tests for _load_gsr and _infer_sampling_rate in app.services.analysis."""
 from __future__ import annotations
 
-import pandas as pd
 import pytest
-from fastapi import HTTPException
 
-from app.services.analysis import _infer_sampling_rate, _load_gsr
+pytest.importorskip("pandas")
+pytest.importorskip("fastapi")
+
+import pandas as pd  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
+
+from app.services.analysis import _infer_sampling_rate, _load_gsr  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
