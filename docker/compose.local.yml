@@ -2,6 +2,7 @@ name: neuronnarrative
 
 services:
   backend:
+    platform: linux/arm64
     build:
       context: ${COMPOSE_PROJECT_DIR:-.}
       dockerfile: docker/backend.Dockerfile
@@ -14,6 +15,7 @@ services:
       - uploads:/tmp/neuronarrative
 
   frontend:
+    platform: linux/arm64
     build:
       context: ${COMPOSE_PROJECT_DIR:-.}
       dockerfile: docker/frontend.Dockerfile
