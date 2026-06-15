@@ -55,10 +55,10 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Audio transcription (Whisper / Vosk) | 🔧 | `_transcribe_audio()` calls Whisper if `openai-whisper` installed; graceful `[]` fallback otherwise. Install: `pip install openai-whisper` |
+| Audio transcription (Whisper / Vosk) | ✅ | `openai-whisper==20250625` installed; `_transcribe_audio()` uses tiny model; graceful `[]` fallback if import fails |
 | Speaker diarisation | ❌ | Not started |
 | Transcript-to-event time alignment | ✅ | `align_transcript()` in `transcript.py` – runs when transcript is non-empty |
-| Transcript timeline viewer in UI | ❌ | Designed; not implemented |
+| Transcript timeline viewer in UI | ✅ | `TranscriptTimeline.tsx` – word-level click-to-seek; empty-state message when no transcript |
 
 ---
 
@@ -68,7 +68,7 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 |------|--------|-------|
 | Ollama HTTP client integration | ✅ | `backend/app/services/summary.py` |
 | GPU guard / CPU fallback env var | ✅ | `NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER` |
-| Summarisation per detected event | 🔧 | Works but receives empty transcripts (blocked by Whisper not installed) |
+| Summarisation per detected event | ✅ | Works; Whisper now installed so transcripts populate when audio has speech |
 | `summary` + `score` fields in response | ✅ | Schema defined; populated when Ollama is available |
 
 ---
@@ -79,10 +79,10 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 |------|--------|-------|
 | Session result export to CSV | ✅ | Client-side Blob download in `EventTimeline.tsx` |
 | Session result export to JSON | ✅ | Client-side Blob download in `EventTimeline.tsx` |
-| Session result export to SRT / PDF | ❌ | Not implemented |
+| Session result export to SRT / PDF | ✅ | SRT via Blob download; PDF via `window.print()` with print-only CSS |
 | EventTimeline UI polish | ✅ | Rule badge, colored score, signed delta_kohm, "Jump to" seek button |
 | Drag-and-drop file upload | ✅ | `UploadPanel.tsx` |
-| Waveform visualisation (Wavesurfer.js) | ❌ | Currently using custom SVG audio proxy |
+| Waveform visualisation (Wavesurfer.js) | ✅ | WaveSurfer v7 replaces `<audio>`; canvas waveform with playback, seek, and nav buttons |
 | Plotly.js charts (from design doc) | ❌ | Using hand-rolled SVG charts instead |
 
 ---
@@ -111,14 +111,14 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 | Issue | File | Priority |
 |-------|------|----------|
-| Whisper not installed in local venv – transcription returns `[]` | `backend/app/services/analysis.py` | High – run `pip install openai-whisper` in venv |
+| Whisper installed (`openai-whisper==20250625`); tiny model downloads on first use (~72 MB) | `backend/app/services/analysis.py` | ✅ Resolved |
 | `EventTimeline` export bar only visible after analysis (correct) | `frontend/src/components/EventTimeline.tsx` | — |
 | Speaker diarisation not implemented | — | Medium |
-| Transcript timeline viewer in UI not implemented | — | Medium |
-| Local venv missing most backend deps (disk full during install) | `backend/.venv` | Medium – run `pip install -e ".[dev]"` when disk has space |
+| Transcript timeline viewer in UI | — | ✅ Implemented (`TranscriptTimeline.tsx`) |
+| Local venv deps installed; disk was full but user freed 1.8 GB | `backend/.venv` | ✅ Resolved |
 | Backend validates WAV MIME as `audio/wav` / `audio/x-wav` / `audio/vnd.wave` / `audio/wave` / `""` + filename fallback | `backend/app/api/routes.py` | ✅ Fixed |
 | Ollama sidecar in compose uses CUDA layers – breaks on Apple Silicon without native Ollama | `docker/compose.local.yml` | Low |
-| SRT / PDF export not implemented | — | Low |
+| SRT / PDF export | — | ✅ Implemented |
 
 ---
 
