@@ -39,6 +39,7 @@ function App() {
   const [parseError, setParseError] = useState<string | null>(null);
   const [isParsingCsv, setIsParsingCsv] = useState<boolean>(false);
   const latestParseId = useRef(0);
+  const seekRequestRef = useRef<((time: number) => void) | null>(null);
   const [ruleset, setRuleset] = useState<string>("default");
   const [preWindow, setPreWindow] = useState<number>(5);
   const [postWindow, setPostWindow] = useState<number>(7);
@@ -313,6 +314,8 @@ function App() {
             audioUrl={audioUrl}
             audioFileName={wavFile?.name ?? null}
             csvFileName={csvFile?.name ?? null}
+            events={timelineEvents}
+            seekRef={seekRequestRef}
           />
         ) : (
           <section className="card preview-placeholder">
@@ -342,6 +345,7 @@ function App() {
             events={timelineEvents}
             isLoading={analyzeMutation.isPending}
             audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
+            onSeek={(time) => { seekRequestRef.current?.(time); }}
           />
         </section>
       </main>

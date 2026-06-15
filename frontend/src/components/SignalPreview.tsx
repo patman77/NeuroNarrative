@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParsedGsrResult, ParsedGsrSample } from "../utils/gsrParser";
 import { logEvent } from "../utils/logger";
+import type { SummarizedEvent } from "../App";
 
 interface SignalPreviewProps {
   data: ParsedGsrResult;
   audioUrl: string | null;
   audioFileName?: string | null;
   csvFileName?: string | null;
+  events?: SummarizedEvent[];
+  seekRef?: React.MutableRefObject<((time: number) => void) | null>;
 }
 
 const DISPLAY_MIN = 1;
@@ -99,7 +102,7 @@ function useInterpolatedSample(samples: ParsedGsrSample[], timeSec: number): Par
     }
     const ratio = (timeSec - lower.timeSec) / (upper.timeSec - lower.timeSec);
     const clampedRatio = clamp(ratio, 0, 1);
-    
+
     return {
       timeSec,
       value: lower.value + (upper.value - lower.value) * clampedRatio,
@@ -130,21 +133,21 @@ function calculateGaugePosition(
       // Find the reference resistance for the current baseline period
       // This is the resistance value when the current baseline was first established
       let referenceResistance: number | undefined = undefined;
-      
+
       // Look through samples up to current time to find the most recent baseline change point
       for (let i = 0; i < samples.length; i++) {
         const s = samples[i];
-        
+
         // Only look at samples up to current time
         if (s.timeSec > sample.timeSec) {
           break;
         }
-        
+
         // Check if this sample has a valid baseline and resistance
         if (s.baseline === undefined || s.resistance === undefined) {
           continue;
         }
-        
+
         // Check if this is the start of a baseline period matching current baseline
         if (s.baseline === sample.baseline) {
           // Is this the start of a new baseline period?
@@ -159,28 +162,28 @@ function calculateGaugePosition(
           }
         }
       }
-      
+
       // If we found a reference resistance, calculate the needle position
       if (referenceResistance !== undefined) {
         // Calculate resistance change in kOhm
         const resistanceDelta = sample.resistance - referenceResistance;
-        
+
         // Convert resistance change to gauge units
         // Negative scale: decrease resistance → move right (increase gauge value)
         // Scale factor: 1 kOhm change ≈ 0.5 gauge units
         const RESISTANCE_TO_GAUGE_SCALE = -0.5;
         const gaugeAdjustment = resistanceDelta * RESISTANCE_TO_GAUGE_SCALE;
-        
+
         // Calculate final position and clamp to valid range
         const position = sample.baseline + gaugeAdjustment;
         return clamp(position, DISPLAY_MIN, DISPLAY_MAX);
       }
     }
-    
+
     // If no resistance data or couldn't find reference, just use baseline
     return clamp(sample.baseline, DISPLAY_MIN, DISPLAY_MAX);
   }
-  
+
   // Fallback to the original value
   return sample.value;
 }
@@ -275,11 +278,11 @@ function Gauge({ value, min, max, baseline }: GaugeProps) {
   return (
     <svg className="gauge" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Current GSR ${clamped.toFixed(2)}`}>
       <defs>
-        <linearGradient 
-          id="gaugeGradient" 
-          x1={gradientStart.x} 
-          y1={gradientStart.y} 
-          x2={gradientEnd.x} 
+        <linearGradient
+          id="gaugeGradient"
+          x1={gradientStart.x}
+          y1={gradientStart.y}
+          x2={gradientEnd.x}
           y2={gradientEnd.y}
           gradientUnits="userSpaceOnUse"
         >
@@ -327,9 +330,10 @@ interface SignalChartProps {
   currentValue: number;
   min: number;
   max: number;
+  events?: SummarizedEvent[];
 }
 
-function SignalChart({ samples, currentTime, currentValue, min, max }: SignalChartProps) {
+function SignalChart({ samples, currentTime, currentValue, min, max, events }: SignalChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pxPerSecond = 80;
   const chartHeight = 220;
@@ -403,11 +407,17 @@ function SignalChart({ samples, currentTime, currentValue, min, max }: SignalCha
     return ticks;
   }, [duration, width, leftPadding]);
 
+  // Filter events within the chart range
+  const visibleEvents = useMemo(() => {
+    if (!events?.length) return [];
+    return events.filter((ev) => ev.time_sec >= startTime && ev.time_sec <= endTime);
+  }, [events, startTime, endTime]);
+
   return (
     <div className="signal-chart" ref={containerRef}>
       <svg width={totalWidth} height={chartHeight} role="img" aria-label="GSR timeline">
         <rect x={0} y={0} width={totalWidth} height={chartHeight} fill="#f7fafc" />
-        
+
         {/* Y-axis */}
         <line x1={leftPadding} y1={topPadding} x2={leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
         {yTicks.map((tick, i) => (
@@ -419,7 +429,7 @@ function SignalChart({ samples, currentTime, currentValue, min, max }: SignalCha
             <line x1={leftPadding} y1={tick.y} x2={width + leftPadding} y2={tick.y} stroke="#e0e0e0" strokeWidth={1} strokeDasharray="2 2" />
           </g>
         ))}
-        
+
         {/* X-axis */}
         <line x1={leftPadding} y1={chartHeight - bottomPadding} x2={width + leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
         {xTicks.map((tick, i) => (
@@ -430,10 +440,41 @@ function SignalChart({ samples, currentTime, currentValue, min, max }: SignalCha
             </text>
           </g>
         ))}
-        
+
         {/* Signal path */}
         <path d={path} fill="none" stroke="#0f6f8f" strokeWidth={2} strokeLinecap="round" />
-        
+
+        {/* Event bubbles — vertical dashed lines with triangle markers */}
+        {visibleEvents.map((ev) => {
+          const ex = leftPadding + ((ev.time_sec - startTime) / duration) * width;
+          const triangleSize = 6;
+          const tx = ex;
+          const ty = topPadding;
+          // Triangle pointing down: tip at top of chart area
+          const trianglePath = `M ${tx} ${ty} L ${tx - triangleSize} ${ty - triangleSize * 1.5} L ${tx + triangleSize} ${ty - triangleSize * 1.5} Z`;
+          return (
+            <g key={ev.event_id}>
+              <line
+                x1={ex}
+                y1={topPadding}
+                x2={ex}
+                y2={chartHeight - bottomPadding}
+                stroke="#f59e0b"
+                strokeWidth={2}
+                strokeDasharray="4 3"
+                opacity={0.85}
+              />
+              <polygon
+                points={`${tx},${ty} ${tx - triangleSize},${ty - triangleSize * 1.5} ${tx + triangleSize},${ty - triangleSize * 1.5}`}
+                fill="#f59e0b"
+                opacity={0.9}
+              />
+              {/* suppress lint — trianglePath is unused but kept for reference */}
+              <title>{`Event ${ev.event_id}: ${ev.rule} @ ${ev.time_sec.toFixed(1)}s`}</title>
+            </g>
+          );
+        })}
+
         {/* Current position indicator */}
         <line x1={indicatorX} y1={indicatorYTop} x2={indicatorX} y2={indicatorYBottom} stroke="#f44336" strokeWidth={2} strokeDasharray="6 6" />
         <circle cx={indicatorX} cy={currentY} r={5} fill="#f44336" stroke="#fff" strokeWidth={2} />
@@ -448,9 +489,10 @@ interface OverviewChartProps {
   min: number;
   max: number;
   onSeek: (time: number) => void;
+  events?: SummarizedEvent[];
 }
 
-function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChartProps) {
+function OverviewChart({ samples, currentTime, min, max, onSeek, events }: OverviewChartProps) {
   const chartWidth = 920;
   const chartHeight = 120;
   const topPadding = 10;
@@ -515,18 +557,24 @@ function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChart
     return ticks;
   }, [duration, usableWidth, leftPadding]);
 
+  // Filter events within the chart range
+  const visibleEvents = useMemo(() => {
+    if (!events?.length) return [];
+    return events.filter((ev) => ev.time_sec >= startTime && ev.time_sec <= endTime);
+  }, [events, startTime, endTime]);
+
   return (
     <div className="overview-chart">
-      <svg 
-        width={chartWidth} 
-        height={chartHeight} 
-        role="img" 
+      <svg
+        width={chartWidth}
+        height={chartHeight}
+        role="img"
         aria-label="Full GSR overview - click to navigate"
         onClick={handleClick}
         style={{ cursor: 'pointer' }}
       >
         <rect x={0} y={0} width={chartWidth} height={chartHeight} fill="#f0f4f7" />
-        
+
         {/* Y-axis */}
         <line x1={leftPadding} y1={topPadding} x2={leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
         {yTicks.map((tick, i) => (
@@ -538,7 +586,7 @@ function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChart
             <line x1={leftPadding} y1={tick.y} x2={usableWidth + leftPadding} y2={tick.y} stroke="#d0d0d0" strokeWidth={1} strokeDasharray="2 2" />
           </g>
         ))}
-        
+
         {/* X-axis */}
         <line x1={leftPadding} y1={chartHeight - bottomPadding} x2={usableWidth + leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
         {xTicks.map((tick, i) => (
@@ -549,18 +597,45 @@ function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChart
             </text>
           </g>
         ))}
-        
+
         {/* Signal path */}
         <path d={path} fill="none" stroke="#0f6f8f" strokeWidth={1.5} strokeLinecap="round" />
-        
+
+        {/* Event bubbles — vertical lines + diamond markers */}
+        {visibleEvents.map((ev) => {
+          const ex = clamp(leftPadding + ((ev.time_sec - startTime) / duration) * usableWidth, leftPadding, usableWidth + leftPadding);
+          const diamondSize = 5;
+          const dy = topPadding + diamondSize;
+          return (
+            <g key={ev.event_id}>
+              <line
+                x1={ex}
+                y1={topPadding}
+                x2={ex}
+                y2={chartHeight - bottomPadding}
+                stroke="#f59e0b"
+                strokeWidth={2}
+                opacity={0.8}
+              />
+              {/* Diamond shape */}
+              <polygon
+                points={`${ex},${dy - diamondSize} ${ex + diamondSize},${dy} ${ex},${dy + diamondSize} ${ex - diamondSize},${dy}`}
+                fill="#f59e0b"
+                opacity={0.9}
+              />
+              <title>{`Event ${ev.event_id}: ${ev.rule} @ ${ev.time_sec.toFixed(1)}s`}</title>
+            </g>
+          );
+        })}
+
         {/* Current position indicator bar */}
-        <line 
-          x1={indicatorX} 
-          y1={topPadding} 
-          x2={indicatorX} 
-          y2={chartHeight - bottomPadding} 
-          stroke="#f44336" 
-          strokeWidth={3} 
+        <line
+          x1={indicatorX}
+          y1={topPadding}
+          x2={indicatorX}
+          y2={chartHeight - bottomPadding}
+          stroke="#f44336"
+          strokeWidth={3}
           opacity={0.7}
         />
       </svg>
@@ -568,7 +643,7 @@ function OverviewChart({ samples, currentTime, min, max, onSeek }: OverviewChart
   );
 }
 
-export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: SignalPreviewProps) {
+export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, events, seekRef }: SignalPreviewProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -585,12 +660,12 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
 
   const currentSample = useInterpolatedSample(data.samples, currentTime + data.startTimeSec);
   const currentValue = useInterpolatedValue(data.samples, currentTime + data.startTimeSec);
-  
+
   // Calculate the gauge position using baseline and resistance if available
-  const gaugeValue = currentSample 
+  const gaugeValue = currentSample
     ? calculateGaugePosition(currentSample, data.samples, data.hasBaseline, data.hasResistance)
     : currentValue;
-  
+
   const displayValue = clamp(gaugeValue, gaugeMin, gaugeMax);
   const currentBaseline = currentSample?.baseline;
 
@@ -666,6 +741,29 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
     return () => cancelAnimationFrame(rafId);
   }, [isPlaying]);
 
+  const seekTo = (time: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const relativeTime = time - data.startTimeSec;
+    const clampedTime = clamp(relativeTime, 0, effectiveDuration);
+    audio.currentTime = clampedTime;
+    setCurrentTime(clampedTime);
+    logEvent("Seeked to time", { time: clampedTime });
+  };
+
+  // Expose seekTo via seekRef
+  useEffect(() => {
+    if (seekRef) {
+      seekRef.current = seekTo;
+    }
+    return () => {
+      if (seekRef) {
+        seekRef.current = null;
+      }
+    };
+  });
+
   const togglePlayback = () => {
     const audio = audioRef.current;
     if (!audio) {
@@ -684,17 +782,6 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
       logEvent("Playback toggle", { action: "pause", currentTime: audio.currentTime });
       audio.pause();
     }
-  };
-
-  const seekTo = (time: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    
-    const relativeTime = time - data.startTimeSec;
-    const clampedTime = clamp(relativeTime, 0, effectiveDuration);
-    audio.currentTime = clampedTime;
-    setCurrentTime(clampedTime);
-    logEvent("Seeked to time", { time: clampedTime });
   };
 
   const jumpToBeginning = () => {
@@ -771,13 +858,13 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
       {audioUrl && (
         <div className="navigation-controls">
           <button type="button" onClick={jumpToBeginning} className="nav-button" title="Jump to beginning">
-            ⏮ Start
+            Start
           </button>
           <button type="button" onClick={skipBackward} className="nav-button" title="Skip backward 10s">
-            ⏪ -10s
+            -10s
           </button>
           <button type="button" onClick={skipForward} className="nav-button" title="Skip forward 10s">
-            +10s ⏩
+            +10s
           </button>
           <button type="button" onClick={jumpToQuarter} className="nav-button" title="Jump to 25%">
             25%
@@ -789,7 +876,7 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
             75%
           </button>
           <button type="button" onClick={jumpToEnd} className="nav-button" title="Jump to end">
-            End ⏭
+            End
           </button>
         </div>
       )}
@@ -829,9 +916,10 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
       </div>
 
       <div className="overview-section">
-        <h3 className="section-title">📊 Full Recording Overview</h3>
+        <h3 className="section-title">Full Recording Overview</h3>
         <p className="section-description">
           Click anywhere on the timeline below to jump to that point. The red line shows your current position.
+          {events && events.length > 0 && ` Orange markers show the ${events.length} detected event(s).`}
         </p>
         <OverviewChart
           samples={data.samples}
@@ -839,11 +927,12 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
           min={chartMin}
           max={chartMax}
           onSeek={seekTo}
+          events={events}
         />
       </div>
 
       <div className="detail-chart-section">
-        <h3 className="section-title">🔍 Detail View (Zoomed)</h3>
+        <h3 className="section-title">Detail View (Zoomed)</h3>
         <p className="section-description">
           This view shows a zoomed-in portion of the signal that follows the current playback position.
         </p>
@@ -853,10 +942,11 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
           currentValue={currentValue}
           min={chartMin}
           max={chartMax}
+          events={events}
         />
       </div>
 
-      {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" hidden />} 
+      {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" hidden />}
     </section>
   );
 }

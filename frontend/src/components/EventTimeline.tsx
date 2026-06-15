@@ -4,9 +4,84 @@ interface EventTimelineProps {
   events: SummarizedEvent[];
   isLoading: boolean;
   audioDuration?: number;
+  onSeek?: (time: number) => void;
 }
 
-export function EventTimeline({ events, isLoading, audioDuration }: EventTimelineProps) {
+function formatTimeSec(sec: number): string {
+  if (!Number.isFinite(sec)) return "—";
+  const mins = Math.floor(sec / 60);
+  const secs = (sec % 60).toFixed(1).padStart(4, "0");
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+function downloadBlob(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportCsv(events: SummarizedEvent[]) {
+  const header = "event_id,time_sec,rule,delta_kohm,delta_z,score,summary";
+  const rows = events.map((ev) => {
+    const escapeCsv = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return "";
+      const str = String(val);
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    return [
+      escapeCsv(ev.event_id),
+      escapeCsv(ev.time_sec),
+      escapeCsv(ev.rule),
+      escapeCsv(ev.delta_kohm),
+      escapeCsv(ev.delta_z),
+      escapeCsv(ev.score),
+      escapeCsv(ev.summary),
+    ].join(",");
+  });
+  downloadBlob([header, ...rows].join("\n"), "neuronarrative_events.csv", "text/csv");
+}
+
+function exportJson(events: SummarizedEvent[]) {
+  downloadBlob(JSON.stringify(events, null, 2), "neuronarrative_events.json", "application/json");
+}
+
+function ScoreBadge({ score }: { score?: number | null }) {
+  if (score === null || score === undefined) return null;
+  const clamped = Math.max(0, Math.min(1, score));
+  const pct = Math.round(clamped * 100);
+  const hue = Math.round(clamped * 120); // 0 = red, 120 = green
+  return (
+    <span
+      className="event-score"
+      title={`Score: ${score.toFixed(3)}`}
+      style={{ background: `hsl(${hue}, 70%, 25%)`, borderColor: `hsl(${hue}, 70%, 45%)` }}
+    >
+      {pct}%
+    </span>
+  );
+}
+
+function DeltaKohm({ value }: { value?: number | null }) {
+  if (value === null || value === undefined) return <span className="muted">—</span>;
+  const sign = value >= 0 ? "+" : "";
+  // Negative delta = resistance drop = arousal increase → good signal (green)
+  // Positive delta = resistance rise → less arousal (red)
+  const colorClass = value <= 0 ? "delta-positive" : "delta-negative";
+  return (
+    <span className={`delta-kohm ${colorClass}`}>
+      {sign}{value.toFixed(2)} kΩ
+    </span>
+  );
+}
+
+export function EventTimeline({ events, isLoading, audioDuration, onSeek }: EventTimelineProps) {
   if (isLoading) {
     return <div className="muted">Analyzing session…</div>;
   }
@@ -19,16 +94,48 @@ export function EventTimeline({ events, isLoading, audioDuration }: EventTimelin
     <div className="timeline">
       <div className="timeline-header">
         <h2>Detected events</h2>
-        {audioDuration && <span className="muted">Audio duration: {audioDuration.toFixed(1)} s</span>}
+        {audioDuration !== undefined && (
+          <span className="muted">Audio duration: {audioDuration.toFixed(1)} s</span>
+        )}
       </div>
+
+      {/* Export bar */}
+      <div className="export-bar">
+        <span className="muted" style={{ fontSize: "0.85rem" }}>{events.length} event{events.length !== 1 ? "s" : ""}</span>
+        <button className="btn-small" onClick={() => exportCsv(events)} title="Download events as CSV">
+          Download CSV
+        </button>
+        <button className="btn-small" onClick={() => exportJson(events)} title="Download events as JSON">
+          Download JSON
+        </button>
+      </div>
+
       <ul className="timeline-list">
         {events.map((event) => (
-          <li key={event.event_id}>
+          <li key={event.event_id} className="timeline-event-card">
             <div className="timeline-row">
-              <strong>t = {event.time_sec.toFixed(2)}s · rule {event.rule}</strong>
-              <span className="muted">
-                ΔkΩ {event.delta_kohm?.toFixed(2) ?? "—"} · z {event.delta_z?.toFixed(2) ?? "—"}
-              </span>
+              <div className="timeline-row-left">
+                <span className="event-badge">{event.rule}</span>
+                <span className="event-time">{formatTimeSec(event.time_sec)}</span>
+              </div>
+              <div className="timeline-row-right">
+                <ScoreBadge score={event.score} />
+                <span className="muted" style={{ fontSize: "0.8rem" }}>
+                  <DeltaKohm value={event.delta_kohm} />
+                  {event.delta_z !== null && event.delta_z !== undefined && (
+                    <> &nbsp; z {event.delta_z.toFixed(2)}</>
+                  )}
+                </span>
+                {onSeek && (
+                  <button
+                    className="btn-small btn-jump"
+                    onClick={() => onSeek(event.time_sec)}
+                    title={`Jump to ${formatTimeSec(event.time_sec)}`}
+                  >
+                    Jump to
+                  </button>
+                )}
+              </div>
             </div>
             {event.summary ? (
               <p className="summary-bubble">{event.summary}</p>
