@@ -32,6 +32,9 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Synchronized audio playback | ✅ | `<audio>` + `requestAnimationFrame` |
 | Backend health status pill in header | ✅ | Added in current session |
 | Analyze error banner (above fold) | ✅ | Replaces buried error text |
+| Drag-and-drop file upload | ✅ | `UploadPanel.tsx` – per-field D&D with extension validation |
+| Auto-spaced overview x-axis ticks | ✅ | Smart interval selection, no overlap |
+| Gauge tick readability | ✅ | Light color (#cbd5e1), 0.8rem bold |
 
 ---
 
@@ -43,8 +46,8 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Changepoint detection (ruptures) | ✅ | Uses `ruptures` library |
 | Rule presets (default / sensitive / strict) | ✅ | `RuleSelector.tsx` + backend |
 | Pre/post event window config | ✅ | Sliders in `RuleSelector.tsx` |
-| Event list in `EventTimeline` component | 🔧 | Component exists; styling/display needs polish |
-| Event bubbles overlaid on signal chart | ❌ | Designed in system-design.md; not implemented |
+| Event list in `EventTimeline` component | ✅ | Polished cards: badge, score, delta_kohm color, seek-to button |
+| Event bubbles overlaid on signal chart | ✅ | Orange markers on `OverviewChart` + `SignalChart` |
 
 ---
 
@@ -52,9 +55,9 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Audio transcription (Whisper / Vosk) | 🧪 | `_transcribe_audio()` returns `[]` – stub only |
+| Audio transcription (Whisper / Vosk) | 🔧 | `_transcribe_audio()` calls Whisper if `openai-whisper` installed; graceful `[]` fallback otherwise. Install: `pip install openai-whisper` |
 | Speaker diarisation | ❌ | Not started |
-| Transcript-to-event time alignment | ❌ | Depends on P3 transcription |
+| Transcript-to-event time alignment | ✅ | `align_transcript()` in `transcript.py` – runs when transcript is non-empty |
 | Transcript timeline viewer in UI | ❌ | Designed; not implemented |
 
 ---
@@ -65,7 +68,7 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 |------|--------|-------|
 | Ollama HTTP client integration | ✅ | `backend/app/services/summary.py` |
 | GPU guard / CPU fallback env var | ✅ | `NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER` |
-| Summarisation per detected event | 🔧 | Works but receives empty transcripts (blocked by P3) |
+| Summarisation per detected event | 🔧 | Works but receives empty transcripts (blocked by Whisper not installed) |
 | `summary` + `score` fields in response | ✅ | Schema defined; populated when Ollama is available |
 
 ---
@@ -74,11 +77,11 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Session result export to CSV | ❌ | Not implemented |
-| Session result export to JSON | ❌ | Not implemented |
+| Session result export to CSV | ✅ | Client-side Blob download in `EventTimeline.tsx` |
+| Session result export to JSON | ✅ | Client-side Blob download in `EventTimeline.tsx` |
 | Session result export to SRT / PDF | ❌ | Not implemented |
-| EventTimeline UI polish | ❌ | Renders empty state; needs real event cards |
-| Drag-and-drop file upload | ❌ | File picker works; D&D not wired |
+| EventTimeline UI polish | ✅ | Rule badge, colored score, signed delta_kohm, "Jump to" seek button |
+| Drag-and-drop file upload | ✅ | `UploadPanel.tsx` |
 | Waveform visualisation (Wavesurfer.js) | ❌ | Currently using custom SVG audio proxy |
 | Plotly.js charts (from design doc) | ❌ | Using hand-rolled SVG charts instead |
 
@@ -98,9 +101,9 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Item | Status | Notes |
 |------|--------|-------|
 | PyInstaller / Electron packaging | ❌ | Not started |
-| End-to-end tests (Playwright) | ❌ | Manual Playwright script exists at `/tmp/verify_buttons.cjs` |
-| Backend unit tests beyond pytest stub | 🔧 | `backend/tests/` exists; coverage unknown |
-| CI/CD pipeline | ❌ | No GitHub Actions workflow file |
+| End-to-end tests (Playwright) | ✅ | `frontend/tests/e2e/preview_flow.spec.ts` – 3 tests, all pass |
+| Backend unit tests | ✅ | `test_events.py` (4 tests), `test_analysis.py` (5 tests) – skip gracefully when deps absent |
+| CI/CD pipeline | ✅ | `.github/workflows/ci.yml` – frontend build + typecheck, backend pytest, parallel jobs |
 
 ---
 
@@ -108,12 +111,14 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 | Issue | File | Priority |
 |-------|------|----------|
-| `_transcribe_audio()` is a stub – analysis always returns empty transcripts | `backend/app/services/analysis.py:70` | High |
-| `EventTimeline` component shows nothing useful without events | `frontend/src/components/EventTimeline.tsx` | Medium |
-| No retry / error-recovery on upload failures | `App.tsx` | Medium |
-| CSV parsing assumes time column contains "time" in header name | `gsrParser.ts:180` | Medium |
-| Backend validates WAV MIME as `audio/wav` / `audio/x-wav` / `audio/vnd.wave` only – mismatches cause 422 errors | `backend/app/api/routes.py` | Low |
+| Whisper not installed in local venv – transcription returns `[]` | `backend/app/services/analysis.py` | High – run `pip install openai-whisper` in venv |
+| `EventTimeline` export bar only visible after analysis (correct) | `frontend/src/components/EventTimeline.tsx` | — |
+| Speaker diarisation not implemented | — | Medium |
+| Transcript timeline viewer in UI not implemented | — | Medium |
+| Local venv missing most backend deps (disk full during install) | `backend/.venv` | Medium – run `pip install -e ".[dev]"` when disk has space |
+| Backend validates WAV MIME as `audio/wav` / `audio/x-wav` / `audio/vnd.wave` / `audio/wave` / `""` + filename fallback | `backend/app/api/routes.py` | ✅ Fixed |
 | Ollama sidecar in compose uses CUDA layers – breaks on Apple Silicon without native Ollama | `docker/compose.local.yml` | Low |
+| SRT / PDF export not implemented | — | Low |
 
 ---
 
@@ -121,7 +126,7 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 | Doc | Matches Code? | Gaps |
 |-----|---------------|------|
-| `README.md` | ✅ Mostly accurate | Doesn't mention baseline/resistance CSV columns or health pill |
+| `README.md` | 🔧 Partially accurate | Doesn't mention drag-drop, event bubbles, export, CI/CD, E2E tests |
 | `IMPLEMENTATION_SUMMARY.md` | ✅ Accurate | Describes implemented gauge + navigation correctly |
 | `GAUGE_FIX_SUMMARY.md` | ✅ Accurate | All code references verified |
 | `NEEDLE_FIX_SUMMARY.md` | ✅ Accurate | Baseline step-function, resistance interpolation confirmed |
