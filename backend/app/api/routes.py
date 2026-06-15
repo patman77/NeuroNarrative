@@ -34,7 +34,9 @@ async def upload_recording(
 ) -> UploadResponse:
     if gsr.content_type not in {"text/csv", "application/vnd.ms-excel"}:
         raise HTTPException(status_code=400, detail="GSR file must be CSV")
-    if audio.content_type not in {"audio/wav", "audio/x-wav", "audio/vnd.wave"}:
+    ALLOWED_WAV_TYPES = {"audio/wav", "audio/x-wav", "audio/vnd.wave", "audio/wave", ""}
+    wav_name = audio.filename or ""
+    if audio.content_type not in ALLOWED_WAV_TYPES and not wav_name.lower().endswith(".wav"):
         raise HTTPException(status_code=400, detail="Audio file must be WAV")
 
     upload_dir = Path("/tmp/neuronarrative")

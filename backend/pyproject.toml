@@ -25,6 +25,5 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0"
-]
+dev = ["pytest>=8.0"]
+asr = ["openai-whisper>=20231117"]

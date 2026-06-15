@@ -23,6 +23,8 @@ DEFAULT_RULESET = {
 
 
 def detect_events(timestamps: np.ndarray, readings: np.ndarray, ruleset: str = "default") -> list[dict[str, Any]]:
+    if len(readings) == 0:
+        return []
     rule = DEFAULT_RULESET.get(ruleset, DEFAULT_RULESET["default"])
     sampling_rate = _estimate_rate(timestamps)
     drz = _zscore(np.gradient(readings) * sampling_rate)

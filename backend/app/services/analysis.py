@@ -68,9 +68,35 @@ async def run_analysis(payload: AnalysisRequest, settings: Settings) -> dict[str
 
 
 async def _transcribe_audio(wav_path: Path) -> list[TranscribedWord]:
-    # Placeholder for integration with Whisper or other ASR.
-    # Returns an empty transcript for now so the rest of the pipeline can be tested.
-    return []
+    try:
+        import whisper  # optional dependency
+    except ImportError:
+        return []
+
+    try:
+        loop = asyncio.get_event_loop()
+        words = await loop.run_in_executor(None, _run_whisper, wav_path)
+        return words
+    except Exception as exc:
+        # Log and continue — transcription failure should not block event detection
+        import logging
+        logging.getLogger(__name__).warning("Whisper transcription failed: %s", exc)
+        return []
+
+
+def _run_whisper(wav_path: Path) -> list[TranscribedWord]:
+    import whisper
+    model = whisper.load_model("tiny")  # smallest model, fast
+    result = model.transcribe(str(wav_path), word_timestamps=True)
+    words: list[TranscribedWord] = []
+    for segment in result.get("segments", []):
+        for word_info in segment.get("words", []):
+            words.append(TranscribedWord(
+                text=word_info["word"].strip(),
+                start=float(word_info["start"]),
+                end=float(word_info["end"]),
+            ))
+    return words
 
 
 async def _summaries_for_events(
