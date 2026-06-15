@@ -189,8 +189,7 @@ function describeArc(cx: number, cy: number, r: number, startAngle: number, endA
   const start = polarToCartesian(cx, cy, r, endAngle);
   const end = polarToCartesian(cx, cy, r, startAngle);
   const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
-  // Use sweep-flag=1 (clockwise) to draw the arc through the TOP for a top semicircle
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
 }
 
 function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
