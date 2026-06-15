@@ -198,7 +198,33 @@ function App() {
   });
 
   const timelineEvents = useMemo(() => analyzeMutation.data?.events ?? [], [analyzeMutation.data]);
-  const analyzeDisabled = previewDisabled || !hasPreviewed;
+  const analyzeDisabled = previewDisabled;
+
+  const handleAnalyzeClick = useCallback(() => {
+    if (!hasPreviewed && !previewDisabled) {
+      setPreviewVisible(true);
+      setHasPreviewed(true);
+      logEvent("Preview auto-staged before analysis", {
+        csvName: csvFile?.name ?? null,
+        wavName: wavFile?.name ?? null
+      });
+    }
+    analyzeMutation.mutate();
+  }, [hasPreviewed, previewDisabled, csvFile, wavFile, analyzeMutation]);
+
+  const previewButtonTitle = !csvFile
+    ? "Load a GSR CSV file first"
+    : !wavFile
+    ? "Load a WAV audio file"
+    : isParsingCsv
+    ? "Parsing CSV…"
+    : parseError
+    ? "Fix the CSV error first"
+    : !gsrPreview
+    ? "Waiting for CSV to parse"
+    : undefined;
+
+  const analyzeButtonTitle = previewDisabled ? previewButtonTitle : undefined;
 
   return (
     <div className="app-shell">
@@ -208,10 +234,10 @@ function App() {
           <p>Align biosignals with conversation to surface emotion-linked summaries.</p>
         </div>
         <div className="app-header-actions">
-          <button onClick={handlePreviewClick} disabled={previewDisabled}>
+          <button onClick={handlePreviewClick} disabled={previewDisabled} title={previewButtonTitle}>
             Preview
           </button>
-          <button onClick={() => analyzeMutation.mutate()} disabled={analyzeMutation.isPending || analyzeDisabled}>
+          <button onClick={handleAnalyzeClick} disabled={analyzeMutation.isPending || analyzeDisabled} title={analyzeButtonTitle}>
             {analyzeMutation.isPending ? "Analyzing…" : "Analyze session"}
           </button>
         </div>
