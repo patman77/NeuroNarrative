@@ -52,6 +52,26 @@ function exportJson(events: SummarizedEvent[]) {
   downloadBlob(JSON.stringify(events, null, 2), "neuronarrative_events.json", "application/json");
 }
 
+function formatSrtTime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const ms = Math.round((sec - Math.floor(sec)) * 1000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+}
+
+function exportSrt(events: SummarizedEvent[]) {
+  const lines = events.map((ev, i) => {
+    const start = formatSrtTime(ev.time_sec);
+    const end = formatSrtTime(ev.time_sec + 7);
+    const delta = ev.delta_kohm !== null && ev.delta_kohm !== undefined
+      ? ` ΔkΩ: ${ev.delta_kohm >= 0 ? "+" : ""}${ev.delta_kohm.toFixed(2)}`
+      : "";
+    return `${i + 1}\n${start} --> ${end}\n[Event: ${ev.rule}]${delta}`;
+  });
+  downloadBlob(lines.join("\n\n") + "\n", "events.srt", "text/srt");
+}
+
 function ScoreBadge({ score }: { score?: number | null }) {
   if (score === null || score === undefined) return null;
   const clamped = Math.max(0, Math.min(1, score));
@@ -107,6 +127,12 @@ export function EventTimeline({ events, isLoading, audioDuration, onSeek }: Even
         </button>
         <button className="btn-small" onClick={() => exportJson(events)} title="Download events as JSON">
           Download JSON
+        </button>
+        <button className="btn-small" onClick={() => exportSrt(events)} title="Download events as SRT subtitles">
+          Download SRT
+        </button>
+        <button className="btn-small" onClick={() => window.print()} title="Print or save as PDF">
+          Save as PDF
         </button>
       </div>
 

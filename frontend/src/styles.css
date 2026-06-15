@@ -293,6 +293,19 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.waveform-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 260px;
+}
+
+.waveform {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.5);
+}
+
 .gauge-panel {
   display: flex;
   gap: 2.2rem;
@@ -654,4 +667,53 @@ details p {
 .btn-jump:hover {
   background: rgba(245, 158, 11, 0.25);
   border-color: rgba(245, 158, 11, 0.7);
+}
+
+/* Transcript timeline */
+.transcript-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.transcript-line {
+  line-height: 1.9;
+  font-size: 0.95rem;
+  color: #e2e8f0;
+}
+.transcript-word {
+  cursor: pointer;
+  border-radius: 0.2rem;
+  padding: 0 0.15rem;
+  transition: background 0.15s;
+}
+.transcript-word:hover {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+/* Print / Save PDF */
+@media print {
+  .app-header,
+  .app-grid,
+  .signal-preview,
+  .preview-placeholder,
+  .preview-actions,
+  .export-bar,
+  .btn-jump,
+  nav {
+    display: none !important;
+  }
+  .timeline {
+    color: #000;
+    background: #fff;
+  }
+  .timeline-event-card {
+    break-inside: avoid;
+    border: 1px solid #ccc;
+    background: #fff;
+    color: #000;
+  }
+  .event-badge, .event-score {
+    color: #000;
+    border: 1px solid #ccc;
+  }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import { EventTimeline } from "./components/EventTimeline";
+import { TranscriptTimeline } from "./components/TranscriptTimeline";
 import { RuleSelector } from "./components/RuleSelector";
 import { UploadPanel } from "./components/UploadPanel";
 import { SignalPreview } from "./components/SignalPreview";
@@ -9,6 +10,12 @@ import type { ParsedGsrResult } from "./utils/gsrParser";
 import { parseGsrCsv } from "./utils/gsrParser";
 import "./styles.css";
 import { logEvent } from "./utils/logger";
+
+export interface TranscriptWord {
+  text: string;
+  start: number | null;
+  end: number | null;
+}
 
 export interface SummarizedEvent {
   event_id: string;
@@ -25,6 +32,7 @@ export interface AnalysisResponse {
   events: SummarizedEvent[];
   gsr_metadata: { sampling_rate_hz: number; duration_sec: number };
   audio_metadata: { sampling_rate_hz: number; duration_sec: number };
+  transcript: TranscriptWord[];
 }
 
 const apiClient = axios.create({
@@ -210,6 +218,7 @@ function App() {
   });
 
   const timelineEvents = useMemo(() => analyzeMutation.data?.events ?? [], [analyzeMutation.data]);
+  const transcript = useMemo(() => analyzeMutation.data?.transcript ?? [], [analyzeMutation.data]);
   const analyzeDisabled = previewDisabled;
 
   const handleAnalyzeClick = useCallback(() => {
@@ -346,6 +355,13 @@ function App() {
             isLoading={analyzeMutation.isPending}
             audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
             onSeek={(time) => { seekRequestRef.current?.(time); }}
+          />
+        </section>
+
+        <section className="card">
+          <TranscriptTimeline
+            transcript={transcript}
+            onSeek={(time) => seekRequestRef.current?.(time)}
           />
         </section>
       </main>
