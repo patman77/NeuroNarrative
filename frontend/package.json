@@ -6,17 +6,19 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.51.0",
     "axios": "^1.7.2",
     "papaparse": "^5.4.1",
-    "playwright": "^1.61.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.45.0",
     "@types/papaparse": "^5.3.8",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.1",
