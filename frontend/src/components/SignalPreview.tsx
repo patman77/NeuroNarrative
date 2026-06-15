@@ -628,7 +628,10 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName }: Si
       logEvent("Audio playback ended");
     };
     const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
+      // Only update from timeupdate when RAF loop is not running (i.e. paused/seeking)
+      if (audio.paused) {
+        setCurrentTime(audio.currentTime);
+      }
     };
 
     audio.addEventListener("loadedmetadata", handleLoaded);

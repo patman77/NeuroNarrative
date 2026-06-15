@@ -106,8 +106,15 @@ function chooseValueField(fields: string[], rows: Record<string, unknown>[]): {
     }
 
     const scaledValues = values.map((value) => value / divisor);
-    const withinRange = scaledValues.filter((value) => value >= 0.5 && value <= 10).length;
-    const spread = Math.max(...scaledValues) - Math.min(...scaledValues);
+    let scaledMin = Infinity;
+    let scaledMax = -Infinity;
+    let withinRange = 0;
+    for (const v of scaledValues) {
+      if (v < scaledMin) scaledMin = v;
+      if (v > scaledMax) scaledMax = v;
+      if (v >= 0.5 && v <= 10) withinRange += 1;
+    }
+    const spread = scaledMax - scaledMin;
     const norm = normalizeField(field);
     const priorityBonus = FIELD_PRIORITY.find(({ match }) => match.test(norm))?.bonus ?? 0.05;
 
@@ -119,8 +126,8 @@ function chooseValueField(fields: string[], rows: Record<string, unknown>[]): {
       best = {
         field,
         divisor,
-        min: Math.min(...scaledValues),
-        max: Math.max(...scaledValues),
+        min: scaledMin,
+        max: scaledMax,
         score
       };
     }
