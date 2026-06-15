@@ -44,6 +44,17 @@ function App() {
   const [postWindow, setPostWindow] = useState<number>(7);
   const [previewVisible, setPreviewVisible] = useState<boolean>(false);
   const [hasPreviewed, setHasPreviewed] = useState<boolean>(false);
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.get("/api/health").then(() => {
+      if (!cancelled) setBackendOnline(true);
+    }).catch(() => {
+      if (!cancelled) setBackendOnline(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -224,7 +235,25 @@ function App() {
     ? "Waiting for CSV to parse"
     : undefined;
 
-  const analyzeButtonTitle = previewDisabled ? previewButtonTitle : undefined;
+  const analyzeButtonTitle = previewDisabled
+    ? previewButtonTitle
+    : backendOnline === false
+    ? "Backend is offline – start uvicorn first"
+    : undefined;
+
+  const backendPillClass =
+    backendOnline === null ? "status-pill status-checking" :
+    backendOnline ? "status-pill status-online" : "status-pill status-offline";
+
+  const backendPillLabel =
+    backendOnline === null ? "Checking backend…" :
+    backendOnline ? "Backend online" : "Backend offline";
+
+  const analyzeError = analyzeMutation.isError
+    ? (analyzeMutation.error instanceof Error
+        ? analyzeMutation.error.message
+        : "Analysis failed. Please retry.")
+    : null;
 
   return (
     <div className="app-shell">
@@ -234,16 +263,32 @@ function App() {
           <p>Align biosignals with conversation to surface emotion-linked summaries.</p>
         </div>
         <div className="app-header-actions">
+          <span className={backendPillClass} title={backendOnline === false ? "Start: cd backend && uvicorn app.main:app --reload" : undefined}>
+            {backendPillLabel}
+          </span>
           <button onClick={handlePreviewClick} disabled={previewDisabled} title={previewButtonTitle}>
             Preview
           </button>
-          <button onClick={handleAnalyzeClick} disabled={analyzeMutation.isPending || analyzeDisabled} title={analyzeButtonTitle}>
+          <button
+            onClick={handleAnalyzeClick}
+            disabled={analyzeMutation.isPending || analyzeDisabled || backendOnline === false}
+            title={analyzeButtonTitle}
+          >
             {analyzeMutation.isPending ? "Analyzing…" : "Analyze session"}
           </button>
         </div>
       </header>
 
       <main className="app-main">
+        {analyzeError && (
+          <div className="error-banner" role="alert">
+            <strong>Analysis failed:</strong> {analyzeError}
+            {backendOnline === false && (
+              <span> – The backend is not running. Start it with: <code>cd backend &amp;&amp; uvicorn app.main:app --reload</code></span>
+            )}
+          </div>
+        )}
+
         <section className="app-grid">
           <UploadPanel
             onCsvChange={handleCsvChange}
@@ -298,13 +343,6 @@ function App() {
             isLoading={analyzeMutation.isPending}
             audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
           />
-          {analyzeMutation.isError && (
-            <p className="error-text">
-              {analyzeMutation.error instanceof Error
-                ? analyzeMutation.error.message
-                : "Analysis failed. Please retry."}
-            </p>
-          )}
         </section>
       </main>
     </div>

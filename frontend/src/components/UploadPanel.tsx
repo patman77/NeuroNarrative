@@ -19,7 +19,7 @@ export function UploadPanel({ onCsvChange, onWavChange, csvName, wavName, parseE
         </label>
         <label className="file-field">
           <span>Aligned audio WAV</span>
-          <input type="file" accept="audio/wav" onChange={(event) => onWavChange(event.target.files?.[0] ?? null)} />
+          <input type="file" accept=".wav,audio/wav,audio/x-wav,audio/wave" onChange={(event) => onWavChange(event.target.files?.[0] ?? null)} />
           <span className="file-name">{wavName ?? "No file selected"}</span>
         </label>
       </div>
