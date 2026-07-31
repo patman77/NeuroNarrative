@@ -5,6 +5,9 @@ interface EventTimelineProps {
   isLoading: boolean;
   audioDuration?: number;
   onSeek?: (time: number) => void;
+  /** From /api/health, so a missing summary can name its real cause. */
+  summarizerEnabled?: boolean;
+  summarizerStatus?: string;
 }
 
 function formatTimeSec(sec: number): string {
@@ -101,7 +104,14 @@ function DeltaKohm({ value }: { value?: number | null }) {
   );
 }
 
-export function EventTimeline({ events, isLoading, audioDuration, onSeek }: EventTimelineProps) {
+export function EventTimeline({
+  events,
+  isLoading,
+  audioDuration,
+  onSeek,
+  summarizerEnabled = true,
+  summarizerStatus,
+}: EventTimelineProps) {
   if (isLoading) {
     return <div className="muted">Analyzing session…</div>;
   }
@@ -166,7 +176,15 @@ export function EventTimeline({ events, isLoading, audioDuration, onSeek }: Even
             {event.summary ? (
               <p className="summary-bubble">{event.summary}</p>
             ) : (
-              <p className="muted">No summary available. Provide a transcript or enable the local LLM.</p>
+              // Distinguish the two very different reasons a summary is missing. The old
+              // single message blamed the setup even when the setup was fine and the
+              // recording was simply silent around this event.
+              <p className="muted">
+                {event.transcript_excerpt
+                  ? "Too little was said here to summarise."
+                  : "No speech near this event."}
+                {summarizerStatus && !summarizerEnabled && ` Summariser off: ${summarizerStatus}.`}
+              </p>
             )}
             {event.transcript_excerpt && (
               <details>

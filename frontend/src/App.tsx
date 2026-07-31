@@ -17,6 +17,12 @@ export interface TranscriptWord {
   end: number | null;
 }
 
+export interface HealthResponse {
+  status: string;
+  summarizer_enabled: boolean;
+  summarizer_status: string;
+}
+
 export interface SummarizedEvent {
   event_id: string;
   time_sec: number;
@@ -34,6 +40,33 @@ export interface AnalysisResponse {
   audio_metadata: { sampling_rate_hz: number; duration_sec: number };
   transcript: TranscriptWord[];
 }
+
+interface AnalysisJob {
+  job_id: string;
+  status: "queued" | "running" | "done" | "error";
+  stage: string;
+  progress: number;
+  result: AnalysisResponse | null;
+  error: string | null;
+}
+
+interface AnalysisProgress {
+  stage: string;
+  fraction: number;
+}
+
+const POLL_INTERVAL_MS = 1000;
+
+const STAGE_LABELS: Record<string, string> = {
+  uploading: "Uploading files",
+  starting: "Starting analysis",
+  queued: "Queued",
+  parsing: "Reading GSR data",
+  detecting: "Detecting events",
+  transcribing: "Transcribing audio",
+  summarising: "Summarising events",
+  done: "Finishing up"
+};
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? ""
@@ -54,15 +87,18 @@ function App() {
   const [previewVisible, setPreviewVisible] = useState<boolean>(false);
   const [hasPreviewed, setHasPreviewed] = useState<boolean>(false);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let timerId: ReturnType<typeof setTimeout>;
 
     const check = () => {
-      apiClient.get("/api/health").then(() => {
+      apiClient.get<HealthResponse>("/api/health").then((response) => {
         if (!cancelled) {
           setBackendOnline(true);
+          setHealth(response.data);
           timerId = setTimeout(check, 30_000);
         }
       }).catch(() => {
@@ -200,6 +236,7 @@ function App() {
         preWindow,
         postWindow
       });
+      setProgress({ stage: "uploading", fraction: 0 });
       const formData = new FormData();
       formData.append("gsr", csvFile);
       formData.append("audio", wavFile);
@@ -215,10 +252,26 @@ function App() {
         pre_event_window_sec: preWindow,
         post_event_window_sec: postWindow
       };
-      const analyzeResponse = await apiClient.post<AnalysisResponse>("/api/analyze", payload);
-      return analyzeResponse.data;
+
+      // Analysis runs as a background job: transcribing a long recording takes minutes,
+      // far longer than the webview allows a single request to stay open.
+      const { data: created } = await apiClient.post<{ job_id: string }>("/api/analyze", payload);
+      setProgress({ stage: "starting", fraction: 0 });
+
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        const { data: job } = await apiClient.get<AnalysisJob>(`/api/analyze/${created.job_id}`);
+        setProgress({ stage: job.stage, fraction: job.progress });
+        if (job.status === "done" && job.result) {
+          return job.result;
+        }
+        if (job.status === "error") {
+          throw new Error(job.error ?? "Analysis failed.");
+        }
+      }
     },
     onSuccess: (data) => {
+      setProgress(null);
       logEvent("Analysis completed", {
         events: data.events.length,
         audioDuration: data.audio_metadata.duration_sec,
@@ -226,6 +279,7 @@ function App() {
       });
     },
     onError: (error) => {
+      setProgress(null);
       logEvent("Analysis failed", {
         message: error instanceof Error ? error.message : String(error)
       });
@@ -295,12 +349,31 @@ function App() {
             disabled={analyzeMutation.isPending || analyzeDisabled}
             title={analyzeButtonTitle}
           >
-            {analyzeMutation.isPending ? "Analyzing…" : "Analyze session"}
+            {analyzeMutation.isPending
+              ? progress
+                ? `${Math.round(progress.fraction * 100)}%`
+                : "Analyzing…"
+              : "Analyze session"}
           </button>
         </div>
       </header>
 
       <main className="app-main">
+        {analyzeMutation.isPending && progress && (
+          <div className="progress-banner" role="status" aria-live="polite">
+            <div className="progress-header">
+              <span>{STAGE_LABELS[progress.stage] ?? progress.stage}</span>
+              <span>{Math.round(progress.fraction * 100)}%</span>
+            </div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${Math.max(2, progress.fraction * 100)}%` }} />
+            </div>
+            <p className="muted">
+              Long recordings take a few minutes to transcribe. You can leave this window open.
+            </p>
+          </div>
+        )}
+
         {analyzeError && (
           <div className="error-banner" role="alert">
             <strong>Analysis failed:</strong> {analyzeError}
@@ -366,6 +439,8 @@ function App() {
             isLoading={analyzeMutation.isPending}
             audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
             onSeek={(time) => { seekRequestRef.current?.(time); }}
+            summarizerEnabled={health?.summarizer_enabled ?? true}
+            summarizerStatus={health?.summarizer_status}
           />
         </section>
 

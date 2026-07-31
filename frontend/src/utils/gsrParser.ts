@@ -31,7 +31,7 @@ const FIELD_PRIORITY: Array<{ match: RegExp; bonus: number }> = [
   { match: /value/, bonus: 0.1 }
 ];
 
-const NUMERIC_REGEX = /-?\d+(?:[\.,]\d+)?/;
+const NUMERIC_REGEX = /-?\d+(?:[.,]\d+)?/;
 
 function normalizeField(field: string): string {
   return field.trim().toLowerCase();

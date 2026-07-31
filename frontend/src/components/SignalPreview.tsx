@@ -451,8 +451,6 @@ function SignalChart({ samples, currentTime, currentValue, min, max, events }: S
           const triangleSize = 6;
           const tx = ex;
           const ty = topPadding;
-          // Triangle pointing down: tip at top of chart area
-          const trianglePath = `M ${tx} ${ty} L ${tx - triangleSize} ${ty - triangleSize * 1.5} L ${tx + triangleSize} ${ty - triangleSize * 1.5} Z`;
           return (
             <g key={ev.event_id}>
               <line
@@ -465,12 +463,12 @@ function SignalChart({ samples, currentTime, currentValue, min, max, events }: S
                 strokeDasharray="4 3"
                 opacity={0.85}
               />
+              {/* Triangle pointing down: tip at top of chart area */}
               <polygon
                 points={`${tx},${ty} ${tx - triangleSize},${ty - triangleSize * 1.5} ${tx + triangleSize},${ty - triangleSize * 1.5}`}
                 fill="#f59e0b"
                 opacity={0.9}
               />
-              {/* suppress lint — trianglePath is unused but kept for reference */}
               <title>{`Event ${ev.event_id}: ${ev.rule} @ ${ev.time_sec.toFixed(1)}s`}</title>
             </g>
           );
@@ -510,15 +508,56 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events }: Overv
     if (!samples.length) {
       return "";
     }
-    const pathCommands: string[] = [];
-    samples.forEach((sample, index) => {
-      const x = leftPadding + ((sample.timeSec - startTime) / duration) * usableWidth;
-      const ratio = (sample.value - min) / (max - min || 1);
-      const clampedRatio = clamp(ratio, 0, 1);
-      const y = topPadding + (1 - clampedRatio) * usableHeight;
-      pathCommands.push(`${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
-    });
-    return pathCommands.join(" ");
+    const toX = (timeSec: number) =>
+      leftPadding + ((timeSec - startTime) / duration) * usableWidth;
+    const toY = (value: number) =>
+      topPadding + (1 - clamp((value - min) / (max - min || 1), 0, 1)) * usableHeight;
+
+    const commands: string[] = [];
+    const push = (x: number, y: number) =>
+      commands.push(`${commands.length === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+
+    // This chart has a fixed width, so a long recording puts many samples on every pixel.
+    // Emitting one command per sample builds a path megabytes long for detail nobody can
+    // see; collapse each pixel column to its min and max instead, which keeps spikes.
+    const columns = Math.max(1, Math.floor(usableWidth));
+    if (samples.length <= columns * 2) {
+      samples.forEach((sample) => push(toX(sample.timeSec), toY(sample.value)));
+      return commands.join(" ");
+    }
+
+    const columnOf = (timeSec: number) =>
+      Math.min(columns - 1, Math.floor(((timeSec - startTime) / duration) * columns));
+
+    let current = columnOf(samples[0].timeSec);
+    let lowest = samples[0];
+    let highest = samples[0];
+
+    const flush = () => {
+      // Emit in time order so the line does not zigzag backwards.
+      const [first, second] =
+        lowest.timeSec <= highest.timeSec ? [lowest, highest] : [highest, lowest];
+      push(toX(first.timeSec), toY(first.value));
+      if (second !== first) {
+        push(toX(second.timeSec), toY(second.value));
+      }
+    };
+
+    for (const sample of samples) {
+      const column = columnOf(sample.timeSec);
+      if (column !== current) {
+        flush();
+        current = column;
+        lowest = sample;
+        highest = sample;
+        continue;
+      }
+      if (sample.value < lowest.value) lowest = sample;
+      if (sample.value > highest.value) highest = sample;
+    }
+    flush();
+
+    return commands.join(" ");
   }, [samples, duration, usableWidth, min, max, startTime, usableHeight, topPadding, leftPadding]);
 
   const indicatorX = clamp(leftPadding + ((currentTime - startTime) / duration) * usableWidth, leftPadding, usableWidth + leftPadding);
