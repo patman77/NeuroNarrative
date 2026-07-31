@@ -8,3 +8,12 @@ frontend/dist/
 backend/.venv/
 .mypy_cache/
 .pytest_cache/
+
+# Desktop packaging output
+dist/
+packaging/build/
+*.egg-info/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
