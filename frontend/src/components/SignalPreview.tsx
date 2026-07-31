@@ -38,6 +38,107 @@ function formatTime(seconds: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+interface ChartPoint {
+  x: number;
+  y: number;
+}
+
+// Smooth curve through the measurement points using monotone cubic interpolation
+// (Fritsch–Carlson, the same scheme as d3's curveMonotoneX). The GSR readings are
+// quantized, so straight segments between samples render as a jagged staircase once
+// zoomed in; a monotone spline rounds the corners without overshooting — the curve
+// still passes exactly through every measurement point and never invents extrema.
+function monotonePath(points: ChartPoint[]): string {
+  if (!points.length) {
+    return "";
+  }
+  if (points.length < 3) {
+    return points
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+      .join(" ");
+  }
+  const n = points.length;
+  const dx: number[] = new Array(n - 1);
+  const slope: number[] = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = points[i + 1].x - points[i].x;
+    slope[i] = (points[i + 1].y - points[i].y) / (dx[i] || 1e-9);
+  }
+  const tangent: number[] = new Array(n);
+  tangent[0] = slope[0];
+  tangent[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (slope[i - 1] * slope[i] <= 0) {
+      // Local extremum: flat tangent keeps the curve inside the data.
+      tangent[i] = 0;
+    } else {
+      const w1 = 2 * dx[i] + dx[i - 1];
+      const w2 = dx[i] + 2 * dx[i - 1];
+      tangent[i] = (w1 + w2) / (w1 / slope[i - 1] + w2 / slope[i]);
+    }
+  }
+  const commands = [`M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`];
+  for (let i = 0; i < n - 1; i++) {
+    const third = dx[i] / 3;
+    const c1x = points[i].x + third;
+    const c1y = points[i].y + tangent[i] * third;
+    const c2x = points[i + 1].x - third;
+    const c2y = points[i + 1].y - tangent[i + 1] * third;
+    commands.push(
+      `C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ` +
+        `${points[i + 1].x.toFixed(2)} ${points[i + 1].y.toFixed(2)}`
+    );
+  }
+  return commands.join(" ");
+}
+
+// A zoomed-out chart puts many samples on every pixel; emitting them all builds a
+// megabytes-long path for detail nobody can see. Collapse each pixel column to its
+// min and max sample (in time order), which keeps spikes visible. Below the
+// threshold the samples pass through untouched, so zoomed-in views keep every point.
+function decimateToColumns(
+  samples: ParsedGsrSample[],
+  startTime: number,
+  duration: number,
+  columns: number
+): ParsedGsrSample[] {
+  const cols = Math.max(1, Math.floor(columns));
+  if (samples.length <= cols * 2) {
+    return samples;
+  }
+  const columnOf = (timeSec: number) =>
+    Math.min(cols - 1, Math.floor(((timeSec - startTime) / duration) * cols));
+
+  const kept: ParsedGsrSample[] = [];
+  let current = columnOf(samples[0].timeSec);
+  let lowest = samples[0];
+  let highest = samples[0];
+
+  const flush = () => {
+    const [first, second] =
+      lowest.timeSec <= highest.timeSec ? [lowest, highest] : [highest, lowest];
+    kept.push(first);
+    if (second !== first) {
+      kept.push(second);
+    }
+  };
+
+  for (const sample of samples) {
+    const column = columnOf(sample.timeSec);
+    if (column !== current) {
+      flush();
+      current = column;
+      lowest = sample;
+      highest = sample;
+      continue;
+    }
+    if (sample.value < lowest.value) lowest = sample;
+    if (sample.value > highest.value) highest = sample;
+  }
+  flush();
+  return kept;
+}
+
 function useInterpolatedValue(samples: ParsedGsrSample[], timeSec: number): number {
   return useMemo(() => {
     if (!samples.length) {
@@ -361,15 +462,11 @@ function SignalChart({ samples, currentTime, currentValue, min, max, pxPerSecond
     if (!samples.length) {
       return "";
     }
-    const pathCommands: string[] = [];
-    samples.forEach((sample, index) => {
-      const x = leftPadding + ((sample.timeSec - startTime) / duration) * width;
-      const ratio = (sample.value - min) / (max - min || 1);
-      const clampedRatio = clamp(ratio, 0, 1);
-      const y = topPadding + (1 - clampedRatio) * usableHeight;
-      pathCommands.push(`${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
-    });
-    return pathCommands.join(" ");
+    const points = decimateToColumns(samples, startTime, duration, width).map((sample) => ({
+      x: leftPadding + ((sample.timeSec - startTime) / duration) * width,
+      y: topPadding + (1 - clamp((sample.value - min) / (max - min || 1), 0, 1)) * usableHeight,
+    }));
+    return monotonePath(points);
   }, [samples, duration, width, min, max, startTime, usableHeight, topPadding, leftPadding]);
 
   useEffect(() => {
@@ -519,56 +616,11 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events }: Overv
     if (!samples.length) {
       return "";
     }
-    const toX = (timeSec: number) =>
-      leftPadding + ((timeSec - startTime) / duration) * usableWidth;
-    const toY = (value: number) =>
-      topPadding + (1 - clamp((value - min) / (max - min || 1), 0, 1)) * usableHeight;
-
-    const commands: string[] = [];
-    const push = (x: number, y: number) =>
-      commands.push(`${commands.length === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
-
-    // This chart has a fixed width, so a long recording puts many samples on every pixel.
-    // Emitting one command per sample builds a path megabytes long for detail nobody can
-    // see; collapse each pixel column to its min and max instead, which keeps spikes.
-    const columns = Math.max(1, Math.floor(usableWidth));
-    if (samples.length <= columns * 2) {
-      samples.forEach((sample) => push(toX(sample.timeSec), toY(sample.value)));
-      return commands.join(" ");
-    }
-
-    const columnOf = (timeSec: number) =>
-      Math.min(columns - 1, Math.floor(((timeSec - startTime) / duration) * columns));
-
-    let current = columnOf(samples[0].timeSec);
-    let lowest = samples[0];
-    let highest = samples[0];
-
-    const flush = () => {
-      // Emit in time order so the line does not zigzag backwards.
-      const [first, second] =
-        lowest.timeSec <= highest.timeSec ? [lowest, highest] : [highest, lowest];
-      push(toX(first.timeSec), toY(first.value));
-      if (second !== first) {
-        push(toX(second.timeSec), toY(second.value));
-      }
-    };
-
-    for (const sample of samples) {
-      const column = columnOf(sample.timeSec);
-      if (column !== current) {
-        flush();
-        current = column;
-        lowest = sample;
-        highest = sample;
-        continue;
-      }
-      if (sample.value < lowest.value) lowest = sample;
-      if (sample.value > highest.value) highest = sample;
-    }
-    flush();
-
-    return commands.join(" ");
+    const points = decimateToColumns(samples, startTime, duration, usableWidth).map((sample) => ({
+      x: leftPadding + ((sample.timeSec - startTime) / duration) * usableWidth,
+      y: topPadding + (1 - clamp((sample.value - min) / (max - min || 1), 0, 1)) * usableHeight,
+    }));
+    return monotonePath(points);
   }, [samples, duration, usableWidth, min, max, startTime, usableHeight, topPadding, leftPadding]);
 
   const indicatorX = clamp(leftPadding + ((currentTime - startTime) / duration) * usableWidth, leftPadding, usableWidth + leftPadding);
