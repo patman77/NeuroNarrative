@@ -72,6 +72,65 @@ const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? ""
 });
 
+// Whole-page zoom, Acrobat/browser style: Cmd/Ctrl +, Cmd/Ctrl −, Cmd/Ctrl 0.
+// The desktop shell is a WKWebView with no built-in page zoom, so the app provides
+// its own via the CSS `zoom` property on the document root. Persisted per browser.
+const PAGE_ZOOM_KEY = "neuronarrative.pageZoom";
+const PAGE_ZOOM_STEP = 1.1;
+const PAGE_ZOOM_MIN = 0.5;
+const PAGE_ZOOM_MAX = 3;
+
+interface PageZoom {
+  percent: number;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  reset: () => void;
+}
+
+function usePageZoom(): PageZoom {
+  const [zoom, setZoom] = useState<number>(() => {
+    const stored = Number(localStorage.getItem(PAGE_ZOOM_KEY));
+    return stored >= PAGE_ZOOM_MIN && stored <= PAGE_ZOOM_MAX ? stored : 1;
+  });
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("zoom", String(zoom));
+    localStorage.setItem(PAGE_ZOOM_KEY, String(zoom));
+  }, [zoom]);
+
+  const clampZoom = (value: number) => Math.min(Math.max(value, PAGE_ZOOM_MIN), PAGE_ZOOM_MAX);
+  const zoomIn = useCallback(() => setZoom((z) => clampZoom(z * PAGE_ZOOM_STEP)), []);
+  const zoomOut = useCallback(() => setZoom((z) => clampZoom(z / PAGE_ZOOM_STEP)), []);
+  const reset = useCallback(() => setZoom(1), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      // Shift is allowed: Cmd+Shift+= is how "+" is typed on many layouts.
+      switch (e.key) {
+        case "+":
+        case "=":
+          zoomIn();
+          break;
+        case "-":
+        case "_":
+          zoomOut();
+          break;
+        case "0":
+          reset();
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomIn, zoomOut, reset]);
+
+  return { percent: Math.round(zoom * 100), zoomIn, zoomOut, reset };
+}
+
 function App() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [wavFile, setWavFile] = useState<File | null>(null);
@@ -89,6 +148,7 @@ function App() {
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const pageZoom = usePageZoom();
 
   useEffect(() => {
     let cancelled = false;
@@ -338,6 +398,17 @@ function App() {
           <p>Align biosignals with conversation to surface emotion-linked summaries.</p>
         </div>
         <div className="app-header-actions">
+          <div className="page-zoom-controls" title="Page zoom (⌘+ / ⌘− / ⌘0)">
+            <button type="button" onClick={pageZoom.zoomOut} className="page-zoom-button" aria-label="Zoom page out">
+              −
+            </button>
+            <button type="button" onClick={pageZoom.reset} className="page-zoom-level" aria-label="Reset page zoom">
+              {pageZoom.percent}%
+            </button>
+            <button type="button" onClick={pageZoom.zoomIn} className="page-zoom-button" aria-label="Zoom page in">
+              +
+            </button>
+          </div>
           <span className={backendPillClass} title={backendOnline === false ? "Start: cd backend && uvicorn app.main:app --reload" : undefined}>
             {backendPillLabel}
           </span>

@@ -520,6 +520,67 @@ details p {
   transform: translateY(0);
 }
 
+.nav-button-active {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.page-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.page-zoom-button,
+.page-zoom-level {
+  border: none;
+  background: rgba(30, 41, 59, 0.9);
+  color: inherit;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.page-zoom-level {
+  min-width: 3.2rem;
+  text-align: center;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  border-left: 1px solid rgba(148, 163, 184, 0.3);
+  border-right: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.page-zoom-button:hover,
+.page-zoom-level:hover {
+  background: rgba(51, 65, 85, 0.9);
+}
+
+.zoom-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.8rem 0;
+}
+
+.zoom-button {
+  min-width: 2.4rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.zoom-level {
+  min-width: 3.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Section styling */
 .overview-section,
 .detail-chart-section {

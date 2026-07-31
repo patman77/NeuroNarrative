@@ -16,6 +16,14 @@ interface SignalPreviewProps {
 const DISPLAY_MIN = 1;
 const DISPLAY_MAX = 6.5;
 
+// Detail-chart zoom. 100% = the original hardcoded density of 80 px per second.
+const DEFAULT_PX_PER_SECOND = 80;
+const MIN_PX_PER_SECOND = 0.05; // lets a multi-hour recording still fit the container
+const MAX_PX_PER_SECOND = 800;
+const ZOOM_STEP = 1.5;
+const DETAIL_LEFT_PADDING = 60;
+const DETAIL_RIGHT_PADDING = 10;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -331,22 +339,22 @@ interface SignalChartProps {
   currentValue: number;
   min: number;
   max: number;
+  pxPerSecond: number;
   events?: SummarizedEvent[];
 }
 
-function SignalChart({ samples, currentTime, currentValue, min, max, events }: SignalChartProps) {
+function SignalChart({ samples, currentTime, currentValue, min, max, pxPerSecond, events }: SignalChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const pxPerSecond = 80;
   const chartHeight = 220;
   const topPadding = 16;
   const bottomPadding = 40;
-  const leftPadding = 60;
-  const rightPadding = 10;
+  const leftPadding = DETAIL_LEFT_PADDING;
+  const rightPadding = DETAIL_RIGHT_PADDING;
   const usableHeight = chartHeight - topPadding - bottomPadding;
   const startTime = samples[0].timeSec;
   const endTime = samples[samples.length - 1].timeSec;
   const duration = Math.max(endTime - startTime, 0.001);
-  const width = Math.max(720, Math.round(duration * pxPerSecond));
+  const width = Math.max(200, Math.round(duration * pxPerSecond));
   const totalWidth = width + leftPadding + rightPadding;
 
   const path = useMemo(() => {
@@ -397,9 +405,12 @@ function SignalChart({ samples, currentTime, currentValue, min, max, events }: S
     });
   }, [min, max, topPadding, usableHeight]);
 
-  // Generate X-axis ticks (every 10 seconds)
+  // Generate X-axis ticks — pick interval so labels never overlap at any zoom level
   const xTicks = useMemo(() => {
-    const tickInterval = 10; // seconds
+    const minPxPerLabel = 55;
+    const minIntervalSec = minPxPerLabel / (width / duration);
+    const niceIntervals = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
+    const tickInterval = niceIntervals.find((i) => i >= minIntervalSec) ?? niceIntervals[niceIntervals.length - 1];
     const ticks: { x: number; label: string }[] = [];
     for (let t = 0; t <= duration; t += tickInterval) {
       const x = leftPadding + (t / duration) * width;
@@ -686,9 +697,12 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events }: Overv
 export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, events, seekRef }: SignalPreviewProps) {
   const waveformRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
+  const detailWrapRef = useRef<HTMLDivElement | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
+  const [pxPerSecond, setPxPerSecond] = useState(DEFAULT_PX_PER_SECOND);
+  const [fitHeight, setFitHeight] = useState(false);
 
   const gaugeMin = DISPLAY_MIN;
   const gaugeMax = DISPLAY_MAX;
@@ -846,6 +860,86 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
     jumpToTime(threeQuarterTime);
   };
 
+  // --- Detail-chart zoom -------------------------------------------------
+  // Horizontal zoom is px/s on the time axis; "fit height" swaps the fixed
+  // gauge-based y-range for the data's own range so the trace fills the chart.
+
+  const dataDuration = Math.max(data.endTimeSec - data.startTimeSec, 0.001);
+
+  const fitWidthPxPerSecond = () => {
+    const available =
+      (detailWrapRef.current?.clientWidth ?? 780) - DETAIL_LEFT_PADDING - DETAIL_RIGHT_PADDING;
+    return clamp(available / dataDuration, MIN_PX_PER_SECOND, MAX_PX_PER_SECOND);
+  };
+
+  const zoomIn = () =>
+    setPxPerSecond((p) => clamp(p * ZOOM_STEP, MIN_PX_PER_SECOND, MAX_PX_PER_SECOND));
+  const zoomOut = () =>
+    setPxPerSecond((p) => clamp(p / ZOOM_STEP, MIN_PX_PER_SECOND, MAX_PX_PER_SECOND));
+  const zoomOriginal = () => {
+    setPxPerSecond(DEFAULT_PX_PER_SECOND);
+    setFitHeight(false);
+  };
+  const fitToWidth = () => setPxPerSecond(fitWidthPxPerSecond());
+  const fitToHeight = () => setFitHeight((f) => !f);
+  const fitPage = () => {
+    setPxPerSecond(fitWidthPxPerSecond());
+    setFitHeight(true);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      switch (e.key) {
+        case "+":
+        case "=":
+          zoomIn();
+          break;
+        case "-":
+        case "_":
+          zoomOut();
+          break;
+        case "0":
+          zoomOriginal();
+          break;
+        case "w":
+        case "W":
+          fitToWidth();
+          break;
+        case "h":
+        case "H":
+          fitToHeight();
+          break;
+        case "f":
+        case "F":
+          fitPage();
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Fit-height uses the data's own range with a small margin; a flat signal
+  // gets a fixed band so the divide never degenerates.
+  const yMargin = Math.max((data.maxValue - data.minValue) * 0.05, 0.05);
+  const detailMin = fitHeight ? data.minValue - yMargin : chartMin;
+  const detailMax = fitHeight ? data.maxValue + yMargin : chartMax;
+  const zoomPercent = Math.round((pxPerSecond / DEFAULT_PX_PER_SECOND) * 100);
+
   return (
     <section className="signal-preview card">
       <div className="signal-preview-header">
@@ -957,14 +1051,46 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
         <p className="section-description">
           This view shows a zoomed-in portion of the signal that follows the current playback position.
         </p>
-        <SignalChart
-          samples={data.samples}
-          currentTime={currentTime + data.startTimeSec}
-          currentValue={currentValue}
-          min={chartMin}
-          max={chartMax}
-          events={events}
-        />
+        <div className="zoom-controls">
+          <button type="button" onClick={zoomOut} className="nav-button zoom-button" title="Zoom out (-)">
+            −
+          </button>
+          <span className="zoom-level" title="Zoom level relative to the default 80 px/s">
+            {zoomPercent}%
+          </span>
+          <button type="button" onClick={zoomIn} className="nav-button zoom-button" title="Zoom in (+)">
+            +
+          </button>
+          <button type="button" onClick={zoomOriginal} className="nav-button" title="Original size (0)">
+            1:1
+          </button>
+          <button type="button" onClick={fitToWidth} className="nav-button" title="Fit whole recording to width (W)">
+            Fit width
+          </button>
+          <button
+            type="button"
+            onClick={fitToHeight}
+            className={`nav-button${fitHeight ? " nav-button-active" : ""}`}
+            aria-pressed={fitHeight}
+            title="Fit signal range to height (H)"
+          >
+            Fit height
+          </button>
+          <button type="button" onClick={fitPage} className="nav-button" title="Fit entire recording (F)">
+            Fit page
+          </button>
+        </div>
+        <div ref={detailWrapRef}>
+          <SignalChart
+            samples={data.samples}
+            currentTime={currentTime + data.startTimeSec}
+            currentValue={currentValue}
+            min={detailMin}
+            max={detailMax}
+            pxPerSecond={pxPerSecond}
+            events={events}
+          />
+        </div>
       </div>
 
     </section>

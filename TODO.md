@@ -93,6 +93,8 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Drag-and-drop file upload | ✅ | `UploadPanel.tsx` |
 | Waveform visualisation (Wavesurfer.js) | ✅ | WaveSurfer v7 replaces `<audio>`; canvas waveform with playback, seek, and nav buttons |
 | Plotly.js charts (from design doc) | ❌ | Using hand-rolled SVG charts instead |
+| Detail-chart zoom controls + shortcuts | ✅ | Toolbar and keys: `+`/`-` zoom, `0` original, `W` fit width, `H` fit height (toggles y-range to the data), `F` fit page; covered by an E2E test |
+| Whole-page zoom (Acrobat style) | ✅ | `usePageZoom` in `App.tsx`: ⌘/Ctrl `+`/`−`/`0` plus a header control; CSS `zoom` on the document root because the WKWebView shell has no built-in page zoom; persisted in `localStorage` |
 
 ---
 
