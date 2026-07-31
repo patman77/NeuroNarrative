@@ -1,8 +1,27 @@
 # NeuroNarrative – System Architecture & Development Plan
 
 > **Note: this is an aspirational design document**, not a description of the current implementation.
-> It captures the intended long-term architecture and has not been updated to track what is actually built.
-> For current status, see [README.md](../README.md) and [TODO.md](../TODO.md).
+> It captures the intended long-term architecture. For current status, see
+> [README.md](../README.md) and [TODO.md](../TODO.md); for how the code is actually
+> structured, see [CLAUDE.md](../CLAUDE.md).
+
+## Where the implementation diverges
+
+The sections below are the plan. As of 2026-07-31 the shipped code differs in ways worth
+knowing before you use this document as a reference:
+
+| Planned here | Actually built |
+| --- | --- |
+| `/healthz`, versioned `/api/v1/sessions/...` resources, WebSocket progress | Three flat endpoints: `GET /api/health`, `POST /api/upload`, `POST /api/analyze` (plus a `POST /api/summaries/test` helper). No WebSockets. |
+| Session/project persistence in SQLite or PostgreSQL | No database. `/api/upload` stages files in a per-user cache dir (`platformdirs`) and returns the paths; those are posted back to `/api/analyze`, confined to that directory. The server holds no session state. |
+| Dramatiq + Redis background workers | An in-process `JobStore` (`services/jobs.py`): `POST /api/analyze` returns `202 {job_id}` and the UI polls for stage and progress. Transcription runs on a dedicated thread; per-event summarisation uses `asyncio.gather`. No Redis anywhere. |
+| Plotly.js charts, Tailwind + shadcn/ui, Zustand | Hand-rolled SVG charts and gauge in `SignalPreview.tsx`, plain CSS in `styles.css`, state held in `App.tsx` with React Query for the analysis mutation. WaveSurfer.js **is** used, for the waveform. |
+| neurokit2 SCR peaks, tonic/phasic decomposition, Savitzky–Golay smoothing | Derivative z-score threshold unioned with `ruptures` PELT/RBF changepoints, plus a minimum-gap filter. No neurokit2 dependency, no smoothing stage. |
+| Filler-word removal, sentence segmentation, diarisation-ready transcript schema | Whisper `small` with word timestamps (MLX on Apple GPU, CTranslate2 elsewhere), VAD-windowed, sliced to each event's `[t−pre, t+post]` window. No segmentation, no diarisation. The only cleanup is `drop_hallucinated_tokens`, which removes non-words the model invents over room tone — not the planned filler-word removal. |
+| Summary window is the configured `[t−pre, t+post]` slice | That slice is empty for most events in a real session (1589 words over 54 minutes), so `_context_words` widens the search to `summary_context_sec` when it holds fewer than `summary_min_words`, and falls back to the guided-recall protocol cues (`protocol_segment`: "Ruf … zurück" → "Danke") when even that is silent. Sparse recordings are the norm, not the exception. |
+| Ruff + Black + isort; Vitest unit tests; OpenTelemetry / Prometheus | ESLint + `tsc` on the frontend, pytest on the backend, Playwright for E2E. No Python linter configured, no Vitest, no telemetry. |
+| PDF report via WeasyPrint | Client-side `window.print()` with print-only CSS. CSV/JSON/SRT are client-side Blob downloads. |
+| Electron shell for the desktop app | PyInstaller bundle with a pywebview native window (system WKWebView) — one signable `.app`, no Chromium. See the P7 breakdown in TODO.md. |
 
 ---
 
@@ -220,7 +239,7 @@ Primary use cases:
 - Logging avoids storing raw transcript text unless explicitly enabled.
 
 ## 12. Deployment & Operations
-- **Local Development**: run `docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up` (or PowerShell equivalent `docker compose --project-directory "$PWD" -f docker/compose.local.yml up`) to launch FastAPI, Redis, the optional Ollama sidecar, and the Vite dev server from the repository root.
+- **Local Development**: run `docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up` (or the PowerShell equivalent `docker compose --project-directory "$PWD" -f docker/compose.local.yml up`) from the repository root. As built, this launches the FastAPI backend and the Vite dev server; the Ollama sidecar is gated behind the `summarizer` profile and requests an NVIDIA GPU. There is no Redis service.
 - **Packaging**: Provide scripts to build standalone desktop app (Electron shell pointing to bundled FastAPI) and CLI utilities for headless batch processing.
 - **Monitoring**: Lightweight metrics endpoint (`/metrics`) for CPU usage, job durations; optional integration with Grafana.
 - **Backups**: Document file system backup procedure for session data and exports.

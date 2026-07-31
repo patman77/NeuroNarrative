@@ -6,11 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# libsndfile1 backs `soundfile`. ffmpeg is deliberately absent: WAV decoding happens
+# through soundfile, so no ffmpeg CLI is needed at runtime.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         libsndfile1 \
-        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/pyproject.toml ./pyproject.toml
@@ -18,10 +19,12 @@ COPY backend/app ./app
 COPY README.md ./README.md
 
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir ".[asr]"
 
 EXPOSE 8000
 
-ENV NEURONARRATIVE_SUMMARIZER_ENABLED=true
+ENV NEURONARRATIVE_SUMMARIZER_ENABLED=true \
+    NEURONARRATIVE_UPLOAD_DIR=/data/uploads \
+    NEURONARRATIVE_ASR_MODEL_DIR=/data/models
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

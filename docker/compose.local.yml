@@ -12,7 +12,9 @@ services:
       NEURONARRATIVE_OLLAMA_URL: ${NEURONARRATIVE_OLLAMA_URL:-http://ollama:11434/api/generate}
       NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER: ${NEURONARRATIVE_REQUIRE_GPU_FOR_SUMMARIZER:-true}
     volumes:
-      - uploads:/tmp/neuronarrative
+      # Staged uploads and the downloaded ASR model both live under /data so they
+      # survive container restarts (see NEURONARRATIVE_UPLOAD_DIR / _ASR_MODEL_DIR).
+      - uploads:/data
 
   frontend:
     platform: linux/arm64
@@ -22,7 +24,10 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_BASE_URL=http://backend:8000/api
+      # The browser talks to the Vite dev server, which proxies /api to the
+      # backend container. Do not set VITE_API_BASE_URL here: the client
+      # already prefixes /api, so a base URL ending in /api yields /api/api/...
+      - VITE_PROXY_TARGET=http://backend:8000
     depends_on:
       - backend
 

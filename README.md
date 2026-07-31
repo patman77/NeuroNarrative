@@ -20,21 +20,24 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 | Session preview: zoomed detail chart | ✅ |
 | Timeline navigation (Start / -10s / +10s / 25% / 50% / 75% / End) | ✅ |
 | Event detection (derivative + changepoint via `ruptures`) | ✅ |
-| Detection rulesets: sensitive / balanced / strict | ✅ |
+| Detection rulesets: Balanced / Sensitive / Strict (`default` / `sensitive` / `strict` on the wire) | ✅ |
 | Configurable pre/post event context windows | ✅ |
 | Event markers overlaid on overview and detail charts | ✅ |
 | Event list with score, ΔkΩ, and jump-to buttons | ✅ |
-| Audio transcription (Whisper `tiny` model, on-device) | ✅ |
+| Audio transcription (`small` model, on-device, no ffmpeg, VAD, deterministic) | ✅ |
 | Transcript timeline with word-level click-to-seek | ✅ |
-| LLM summarisation per event (Ollama, optional) | ✅ |
+| GPU acceleration, auto-detected (Apple Metal / NVIDIA CUDA / CPU) | ✅ |
+| LLM summarisation per event (Ollama, auto-detected, answers in the transcript's language) | ✅ |
 | Session export: CSV, JSON, SRT, PDF | ✅ |
 | Backend health status pill with auto-retry | ✅ |
-| Backend unit tests (pytest, 10 passing) | ✅ |
+| Backend unit tests (pytest, 75 passing) | ✅ |
 | Frontend E2E tests (Playwright, 3 passing) | ✅ |
-| CI: GitHub Actions (frontend build + typecheck, backend pytest) | ✅ |
+| ESLint config (TypeScript + React rules) | ✅ |
+| CI: GitHub Actions (frontend lint + typecheck + build, backend pytest) | ✅ |
 | Speaker diarisation | ❌ not started |
 | EEG ingestion | ❌ not started |
-| Desktop packaging (Electron / PyInstaller) | ❌ not started |
+| Desktop app: frozen macOS `.app` (PyInstaller), native window, offline-capable | ✅ |
+| Desktop app: Windows / Linux builds, code signing | ❌ not started |
 
 ---
 
@@ -55,6 +58,7 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 │   ├── frontend.Dockerfile
 │   └── compose.local.yml
 ├── docs/
+│   ├── images/               # frontend-overview.png — predates the current UI
 │   └── system-design.md      # Aspirational architecture reference
 ├── frontend/                 # React + Vite + TypeScript
 │   ├── src/
@@ -62,9 +66,17 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 │   │   ├── utils/            # gsrParser, logger
 │   │   └── App.tsx
 │   ├── tests/e2e/            # Playwright tests
+│   ├── .eslintrc.cjs
 │   └── vite.config.ts
+├── packaging/                # PyInstaller spec for the desktop build
+├── scripts/                  # build_desktop.sh, smoke_desktop.sh, dev helpers
+├── CLAUDE.md                 # Architecture notes for AI coding agents
 └── TODO.md                   # Detailed feature status
 ```
+
+The repo-root `test_gsr.csv` / `test_audio.wav` fixtures are the synthetic session used by
+the Playwright suite and `scripts/test_api.py`; regenerate them with
+`python scripts/generate_synthetic_data.py`.
 
 ---
 
@@ -76,7 +88,7 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 cd backend
 python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+pip install -e ".[dev,asr,gpu]" # "gpu" adds MLX on Apple silicon; no-op elsewhere
 uvicorn app.main:app --reload
 ```
 
@@ -84,9 +96,37 @@ The API runs on <http://localhost:8000>. Key endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/health` | Liveness check |
-| `POST` | `/api/upload` | Accept GSR CSV + WAV, store in temp dir |
-| `POST` | `/api/analyze` | Run event detection, transcription, and optional summarisation |
+| `GET` | `/api/health` | Liveness check; reports `summarizer_status`, `cpu`, `asr_threads`, `gpu_available` |
+| `POST` | `/api/upload` | Accept GSR CSV + WAV, stage them, return their paths |
+| `POST` | `/api/analyze` | Start an analysis; returns `202 {job_id}` immediately |
+| `GET` | `/api/analyze/{job_id}` | Poll status: `stage`, `progress` (0–1), and `result` when done |
+
+Analysis is a **background job**, not a long request. Transcribing a 54-minute recording
+takes several minutes, and the desktop window enforces its own per-request timeout, so a
+synchronous call would fail no matter what the client sets. The UI polls once per second and
+shows a progress bar.
+
+Uploads are staged in a per-user cache directory (`~/Library/Caches/neuronarrative/uploads`
+on macOS, `%LOCALAPPDATA%` on Windows, `~/.cache` on Linux) and pruned after 24 h. `/analyze`
+only accepts paths inside that directory.
+
+Useful environment variables (all prefixed `NEURONARRATIVE_`, or use `backend/.env`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `UPLOAD_DIR` | per-user cache dir | Where uploads are staged |
+| `UPLOAD_RETENTION_HOURS` | `24` | Age at which staged uploads are pruned; `0` disables |
+| `ASR_BACKEND` | `auto` | `auto` picks MLX (Apple GPU) → CUDA → CPU. Force with `mlx`, `cuda`, `cpu` |
+| `ASR_MODEL` | `small` | Model size — see the comparison below |
+| `ASR_VAD` | `true` | Skip non-speech (faster on recordings with pauses, prevents hallucinated text over silence) |
+| `ASR_TEMPERATURE` | `0.0` | Greedy decoding. Whisper's default fallback chain re-decodes hard passages with random sampling — see below |
+| `ASR_MAX_WORDS_PER_SEC` | `6.0` | Windows exceeding this are hallucination loops and are dropped; `0` disables |
+| `ASR_LANGUAGE` | unset | Force a language code (e.g. `de`); unset auto-detects |
+| `ASR_THREADS` | `0` (auto) | Transcription threads. Auto = half the performance cores, so the machine stays usable. See below. |
+| `ASR_MODEL_DIR` | per-user cache dir | Model download cache |
+| `SUMMARY_CONTEXT_SEC` | `45.0` | Fallback radius when the pre/post window holds too little speech to summarise; `0` disables. Sessions are mostly silent, so a 12 s window is empty for most events |
+| `SUMMARY_MIN_WORDS` | `4` | Excerpts shorter than this are not sent to the LLM |
+| `FRONTEND_DIST` | unset | When set, the backend serves the built SPA at `/` |
 
 ### Frontend
 
@@ -96,7 +136,18 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs on <http://localhost:5173> (or the next free port) and proxies `/api/*` to the backend. CORS is configured to accept any `localhost` port, so port conflicts are handled automatically.
+The Vite dev server runs on <http://localhost:5173> (or the next free port) and proxies `/api/*` to the backend. CORS is configured to accept any `localhost` port, so port conflicts are handled automatically. Set `VITE_PROXY_TARGET` if the backend is not on `http://localhost:8000`.
+
+Other frontend scripts: `npm run lint` (ESLint), `npm run typecheck` (`tsc --noEmit`), `npm run build`.
+
+For a single-process setup with no dev server (and therefore no proxy or CORS involved),
+build the frontend and point the backend at it:
+
+```bash
+cd frontend && npm run build
+cd ../backend && NEURONARRATIVE_FRONTEND_DIST=../frontend/dist uvicorn app.main:app
+# whole app on http://localhost:8000
+```
 
 ### Docker (both services together)
 
@@ -104,11 +155,88 @@ The Vite dev server runs on <http://localhost:5173> (or the next free port) and 
 docker compose --project-directory "$(pwd)" -f docker/compose.local.yml up --build
 ```
 
+The frontend container runs the Vite dev server and reaches the backend through the proxy
+via `VITE_PROXY_TARGET=http://backend:8000`. The Ollama sidecar sits behind the
+`summarizer` compose profile and requests an NVIDIA GPU, so it is not started by default
+and does not work on Apple Silicon — run Ollama natively there (see below).
+
+---
+
+## Desktop build (macOS)
+
+Produces a double-clickable `NeuroNarrative.app` that needs no Python, no Node and no
+terminal. It starts the API on an ephemeral port, serves the built UI itself, and shows it
+in a **native window** (pywebview → system WKWebView, so no browser engine is bundled).
+
+```bash
+cd backend && pip install -e ".[asr,gpu,desktop,packaging]" && cd ..   # "gpu" is a no-op off Apple silicon
+./scripts/build_desktop.sh              # ~721 MB, `small` ASR model bundled (works offline)
+./scripts/build_desktop.sh --no-model   # ~257 MB, model downloads on first use
+NEURONARRATIVE_ASR_MODEL=base ./scripts/build_desktop.sh   # ~400 MB, faster, lower accuracy
+./scripts/smoke_desktop.sh              # verify the bundle with no venv, network offline
+```
+
+Output lands in `dist/` (both a `NeuroNarrative/` directory and a `NeuroNarrative.app`).
+
+| Behaviour | Detail |
+|---|---|
+| Window | 1440×940 native window, min 1024×700. Closing it shuts the server down. |
+| Port | Ephemeral — 8000 is often taken. The chosen URL is printed and logged. |
+| Logs | `~/Library/Logs/neuronarrative/neuronarrative.log` |
+| Uploads | `~/Library/Caches/neuronarrative/uploads`, pruned after 24 h |
+| ASR model | Bundled build reads it from inside the `.app`; `--no-model` falls back to `~/Library/Caches/neuronarrative/models` and downloads on first use |
+| Second launch | Detects the running instance and reopens it instead of starting a second server; a stale record is health-probed and cleared |
+| `NEURONARRATIVE_BROWSER=1` | Use the system browser instead of the native window |
+| `NEURONARRATIVE_NO_BROWSER=1` | Headless: serve only, open nothing (used by the smoke test) |
+
+**Not yet done:** the bundle is unsigned and un-notarized, so macOS Gatekeeper will block it
+if it's downloaded rather than built locally (right-click → Open, or
+`xattr -dr com.apple.quarantine NeuroNarrative.app`). Windows and Linux builds are untried.
+See [TODO.md](TODO.md#p7-desktop-packaging--detailed-breakdown).
+
 ---
 
 ## Local LLM (optional)
 
-Event summaries are generated by a local Ollama model. Summarisation is disabled automatically when Ollama is unreachable.
+Event summaries are generated by a local Ollama model. At startup the app probes Ollama and
+reports the outcome in `GET /api/health` as `summarizer_status`, so a missing summary always
+has a stated reason rather than a silent shrug.
+
+Summaries are written in the language of the excerpt, so a German session yields German
+summaries.
+
+Four things used to break this quietly — worth knowing, because none of them looked like
+what they were:
+
+* The GPU check tested for **CUDA only**, so every Apple silicon Mac reported "no GPU" and
+  disabled summaries — with Ollama running happily on Metal next door. Metal now counts.
+* The configured model name is easy to get wrong. `qwen2.5:7b-instruct-q4_K_M` looks
+  plausible but Ollama may only have `qwen2.5:7b` pulled, and requesting a missing model
+  fails per event with no clue why. The probe now falls back to an installed model of the
+  same family and says so in `summarizer_status`.
+* **The excerpt window was usually empty.** Sessions are mostly silent — a 54-minute
+  recording held 1589 words — so the 5 s/7 s window around an event caught nothing for 17
+  of 23 events. The search now widens to `SUMMARY_CONTEXT_SEC` (45 s) only when the tight
+  window comes up short, so dense passages keep the more precise excerpt. When even that
+  finds nothing, the facilitator's session cues take over: "Ruf … zurück" opens an
+  exercise, "Danke" closes it, and "Beschreibe" / "Was siehst du noch" / "Was ist am
+  deutlichsten" bound subsections — the event's excerpt becomes everything said in its
+  exercise, which is the only context there is.
+* **Whisper invents non-words over room tone** — runs like `ლლლლ`, `සිවිිිි` or `ʕ ʔ ʔ`.
+  These are too few per window to look like the hallucination loops the word-rate check
+  catches, but they became the text an event was summarised from. They are now filtered by
+  script; numbers and punctuation survive, because spoken meter readings are real content.
+
+An event with no summary now says which of these applies: no speech near it, too little
+said to paraphrase, or the summariser being off.
+
+```bash
+# Install Ollama (https://ollama.com), then:
+ollama pull qwen2.5:7b
+ollama serve
+```
+
+Use `NEURONARRATIVE_SUMMARIZER_ENABLED=false` to switch summaries off entirely.
 
 ```bash
 # Install Ollama (https://ollama.com), then:
@@ -131,26 +259,89 @@ On macOS with Apple Silicon, run Ollama natively (not inside Docker) and point t
 
 ## Audio transcription
 
-Transcription uses OpenAI Whisper (`tiny` model, ~72 MB, downloaded on first use). It runs on-device inside the backend process. If `openai-whisper` is not installed, the backend falls back gracefully and returns an empty transcript.
+Transcription uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2),
+on-device, in a worker thread inside the backend process. WAV decoding and resampling to
+16 kHz go through `soundfile` + `scipy`, so **no ffmpeg binary is required**.
 
-```bash
-# Already included in the venv if you ran pip install -e ".[dev,asr]"
-pip install openai-whisper
-```
+### Hardware acceleration (automatic)
+
+The backend is chosen at runtime from what the machine actually offers — nothing to
+configure:
+
+| Machine | Backend | Device |
+|---|---|---|
+| Apple silicon M1–M5 with the `gpu` extra | MLX | **Metal GPU** |
+| Apple silicon without the extra | faster-whisper | CPU (int8) |
+| NVIDIA GPU (Windows/Linux) | faster-whisper | **CUDA** (float16) |
+| Intel Mac, GPU-less Windows/Linux | faster-whisper | CPU (int8) |
+
+Every probe degrades rather than raises, so an unusable driver or a missing package falls
+back to CPU instead of failing. Force a choice with `NEURONARRATIVE_ASR_BACKEND=mlx|cuda|cpu`.
+`GET /api/health` reports what was picked.
+
+Measured on an M1 Pro, German speech:
+
+| Backend | Word error rate | Throughput | 54-min recording |
+|---|---|---|---|
+| **MLX (Metal GPU)** | **0.0 %** | **6.3× realtime** | **~8.5 min** |
+| CPU int8 | 3.3 % | 1.6× realtime | ~33 min |
+
+The GPU path is both faster *and* slightly more accurate, because MLX runs float16 where
+the CPU path uses int8 quantisation.
+
+### Choosing a model
+
+Measured on noisy German speech (~10 dB SNR), CPU backend:
+
+| Model | Word error rate | Size |
+|---|---|---|
+| `tiny` | 16.7 % | 75 MB |
+| `base` | 6.7 % | 141 MB |
+| **`small` (default)** | **3.3 %** | 464 MB |
+
+`small` is the default because transcript quality drives everything downstream — excerpts
+and summaries are only as good as the words. `NEURONARRATIVE_ASR_MODEL=base` trades accuracy
+for speed; `large-v3-turbo` is available for maximum quality on the GPU path.
+
+### Voice activity detection
+
+Long silences are skipped before transcription. This both saves time and prevents Whisper's
+worst failure mode: inventing text over quiet passages and repeating one phrase for minutes.
+
+The two backends detect speech differently, and not by preference — **onnxruntime (which
+Silero VAD needs) segfaults when loaded in the same process as MLX.** Verified: the crash
+depends on initialisation order and `KMP_DUPLICATE_LIB_OK` does not help. So the MLX path
+uses a self-contained energy detector in numpy (3 ms on a 41 s recording, versus 168 ms for
+Silero, and it picked the same speech region), while the CPU/CUDA path keeps faster-whisper's
+built-in Silero VAD. Disable either with `NEURONARRATIVE_ASR_VAD=false`.
+
+faster-whisper reports a per-word probability, which populates `TranscribedWord.confidence`.
+`align_transcript` drops words below `min_confidence` (0.5), so very uncertain words no
+longer reach the summariser — that filter existed before but was inert while confidence was
+always `None`.
 
 ---
 
 ## Testing
 
 ```bash
-# Backend
+# Backend unit tests (10 tests)
 cd backend && pytest tests/ -v
 
-# Frontend E2E (requires dev server running on port 5175)
-cd frontend && npx playwright test
+# Frontend static checks
+cd frontend && npm run lint && npm run typecheck
+
+# Frontend E2E (3 tests). playwright.config.ts pins baseURL to port 5175,
+# so the dev server must listen there rather than on the default 5173.
+cd frontend
+npx playwright install chromium   # once, or after a @playwright/test upgrade
+npx vite --port 5175 &
+npx playwright test
 ```
 
-CI runs both on every push via `.github/workflows/ci.yml`.
+`.github/workflows/ci.yml` runs the frontend lint/typecheck/build and the backend pytest
+suite on every push and PR to `main`. The E2E suite is **not** in CI — it needs a running
+dev server and browser binaries, so run it locally when changing the preview UI.
 
 ---
 
@@ -162,3 +353,9 @@ See [TODO.md](TODO.md) for the full breakdown. The most impactful gaps are:
 - **Transcript timeline UX** — currently shows words but needs better visual design
 - **EEG support** — no ingestion pipeline yet
 - **Desktop packaging** — ship as a standalone app without requiring a terminal
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
