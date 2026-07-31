@@ -15,6 +15,10 @@ class EventRule:
     changepoint_penalty: float = 8.0
 
 
+# Upper bound on the samples handed to the changepoint detector. The rbf cost is O(n^2)
+# in memory, so this caps it at roughly 2000^2 * 8 B = 32 MB regardless of recording length.
+CHANGEPOINT_MAX_SAMPLES = 2000
+
 DEFAULT_RULESET = {
     "default": EventRule(name="default"),
     "sensitive": EventRule(name="sensitive", derivative_z=1.8, min_gap_sec=3.0, changepoint_penalty=6.0),
@@ -73,12 +77,32 @@ def _estimate_rate(timestamps: np.ndarray) -> float:
 
 
 def _changepoint_candidates(signal: np.ndarray, penalty: float) -> list[int]:
-    if len(signal) < 10:
+    """Changepoint indices, computed on a length-bounded view of the signal.
+
+    The rbf cost builds an n x n Gram matrix, so memory and time grow with the square of
+    the sample count: ~2.6 GB at 10k samples, ~64 GB at 90k. A real half-hour recording
+    would exhaust the machine (it did). Detection therefore runs on at most
+    CHANGEPOINT_MAX_SAMPLES evenly spaced samples and the results are mapped back to
+    original indices.
+
+    GSR is a slow signal, so decimating for changepoint purposes costs little resolution;
+    the derivative rule still runs at full rate and supplies precise timing.
+    """
+    n = len(signal)
+    if n < 10:
         return []
-    algo = rpt.Pelt(model="rbf").fit(signal)
+
+    if n > CHANGEPOINT_MAX_SAMPLES:
+        positions = np.linspace(0, n - 1, CHANGEPOINT_MAX_SAMPLES).round().astype(int)
+        reduced = signal[positions]
+    else:
+        positions = np.arange(n)
+        reduced = signal
+
+    algo = rpt.Pelt(model="rbf").fit(reduced)
     bkps = algo.predict(pen=penalty)
-    # Convert breakpoints (segment end indices) into candidate indices
-    return [max(0, idx - 1) for idx in bkps if idx > 0]
+    # Breakpoints are segment end indices into `reduced`; map them back to the original.
+    return [int(positions[min(idx - 1, len(positions) - 1)]) for idx in bkps if idx > 0]
 
 
 def _zscore(arr: np.ndarray) -> np.ndarray:
