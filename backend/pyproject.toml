@@ -15,17 +15,29 @@ dependencies = [
     "pandas>=2.2",
     "numpy>=1.26",
     "scipy>=1.11",
-    "librosa>=0.10",
     "soundfile>=0.12",
     "ruptures>=1.1.9",
     "httpx>=0.27",
-    "requests>=2.31",
+    "platformdirs>=4.0",
     "python-dotenv>=1.0"
 ]
 
+[project.scripts]
+neuronarrative = "app.desktop:main"
+
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
-asr = ["openai-whisper>=20231117"]
+dev = ["pytest>=8.0", "requests>=2.31"]
+# Native window for the desktop build. pywebview uses the OS webview (WKWebView on
+# macOS), so it adds a window without bundling a browser engine.
+desktop = ["pywebview>=5.0"]
+packaging = ["pyinstaller>=6.6"]
+# faster-whisper (CTranslate2) rather than openai-whisper: same tiny model, no torch.
+# Keeps the desktop bundle ~500 MB smaller and avoids freezing torch with PyInstaller.
+asr = ["faster-whisper>=1.0"]
+# Apple silicon only: MLX runs Whisper on the Metal GPU (~4x faster than CPU int8 and
+# slightly more accurate, being float16). The marker makes this a no-op elsewhere, so
+# `pip install ".[asr,gpu]"` is safe on Windows and Linux.
+gpu = ["mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
