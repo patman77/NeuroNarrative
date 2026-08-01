@@ -46,6 +46,10 @@ const KIND_LABEL: Record<string, string> = {
   FN: "Freie Nadel"
 };
 
+// Badge text. `LPA_slow` is our internal discriminator; the manual's own abbreviation is
+// plain `LPA`, which is both more faithful and short enough not to overflow the badge column.
+const KIND_BADGE: Record<string, string> = { LPA_slow: "LPA" };
+
 const KIND_HINT: Record<string, string> = {
   A: "A fall of the needle — something became available.",
   T: "The smallest deflection. Below the manual's 0.5 A reliability floor.",
@@ -201,30 +205,39 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
         </div>
       )}
 
-      {metrics && !metrics.a_unit_calibrated && (
-        <p className="phenomena-caveat">
-          A-magnitudes are <strong>uncalibrated</strong>: one scale division is estimated at{" "}
-          {metrics.a_unit_lp.toFixed(3)} LP rather than measured by a Dosendruck. Comparing a BE
-          against an A needs that calibration, so treat the ordering as indicative.
-          {!metrics.zone_min && " No charge zone is named, because no solo-electrode offset was given."}
-        </p>
-      )}
-
-      {artefacts && artefacts.spans.length > 0 && (
-        <p className="phenomena-caveat">
-          {(artefacts.masked_fraction * 100).toFixed(2)}% of the recording is masked as artefact
-          ({artefacts.spans.length} span{artefacts.spans.length === 1 ? "" : "s"}), and no
-          phenomenon is reported inside those.
-        </p>
+      {/* Folded by default: both caveats matter, but at ~200px they were taking a quarter of
+          the column away from the list they are commentary on. */}
+      {(metrics?.a_unit_calibrated === false || (artefacts?.spans.length ?? 0) > 0) && (
+        <details className="phenomena-caveats">
+          <summary>
+            {metrics?.a_unit_calibrated === false && "A-magnitudes uncalibrated"}
+            {metrics?.a_unit_calibrated === false && (artefacts?.spans.length ?? 0) > 0 && " · "}
+            {(artefacts?.spans.length ?? 0) > 0 &&
+              `${((artefacts?.masked_fraction ?? 0) * 100).toFixed(2)}% masked as artefact`}
+          </summary>
+          {metrics && !metrics.a_unit_calibrated && (
+            <p className="phenomena-caveat">
+              One scale division is estimated at {metrics.a_unit_lp.toFixed(3)} LP rather than
+              measured by a Dosendruck. Comparing a BE against an A needs that calibration, so
+              treat the ordering as indicative.
+              {!metrics.zone_min && " No charge zone is named, because no solo-electrode offset was given."}
+            </p>
+          )}
+          {artefacts && artefacts.spans.length > 0 && (
+            <p className="phenomena-caveat">
+              {(artefacts.masked_fraction * 100).toFixed(2)}% of the recording is masked as
+              artefact ({artefacts.spans.length} span{artefacts.spans.length === 1 ? "" : "s"}),
+              and no phenomenon is reported inside those.
+            </p>
+          )}
+        </details>
       )}
 
       {labelError && <p className="phenomena-caveat">{labelError}</p>}
 
       {recordingId && (
-        <p className="section-description">
-          Reviewed <strong>{Object.keys(labels).length}</strong> of {phenomena.length}. Confirming
-          or rejecting a detection is what makes precision and recall measurable at all — nothing
-          here is validated against ground truth until you do.
+        <p className="section-description reviewed-line" title="Confirming or rejecting a detection is what makes precision and recall measurable at all — nothing here is validated against ground truth until you do.">
+          Reviewed <strong>{Object.keys(labels).length}</strong> of {phenomena.length}
         </p>
       )}
 
@@ -271,26 +284,40 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
               >
                 {formatTime(p.t_start)}
               </button>
-              <span className={`phenomenon-kind kind-${p.kind.toLowerCase()}`} title={KIND_HINT[p.kind] ?? ""}>
-                {p.kind}
+              <span
+                className={`phenomenon-kind kind-${p.kind.toLowerCase()}`}
+                title={KIND_HINT[p.kind] ?? p.kind}
+              >
+                {KIND_BADGE[p.kind] ?? p.kind}
               </span>
               <span className="phenomenon-name">{KIND_LABEL[p.kind] ?? p.kind}</span>
-              <span className="phenomenon-magnitude">
-                {p.amplitude_a != null ? `${p.amplitude_a.toFixed(1)}A` : ""}
-                {p.amplitude_lp != null && (
-                  <span className="phenomenon-lp"> {p.amplitude_lp >= 0 ? "+" : ""}{p.amplitude_lp.toFixed(3)} LP</span>
+              {/* Magnitude in A-units only; the raw LP goes in the tooltip. Showing both inline
+                  made the cell wide enough to overflow a half-width column, and the row then
+                  wrapped across three lines. */}
+              <span
+                className="phenomenon-magnitude"
+                title={
+                  p.amplitude_lp != null
+                    ? `${p.amplitude_lp >= 0 ? "+" : ""}${p.amplitude_lp.toFixed(3)} LP`
+                    : undefined
+                }
+              >
+                {p.amplitude_a != null ? `${p.amplitude_a.toFixed(1)}A` : "—"}
+              </span>
+              {/* Always rendered, even when empty: a conditional cell would shift every
+                  following column and the rows would stop lining up with each other. */}
+              <span className="phenomenon-meta">
+                {segment && <span className="phenomenon-segment">{segment.label}</span>}
+                {p.stimulus_locked === false && (
+                  <span
+                    className="phenomenon-unlocked"
+                    title="No utterance ended in the 1–6 s before this. In a solo session that usually just means you were working quietly, so it lowers confidence rather than excluding it."
+                  >
+                    unlocked
+                  </span>
                 )}
               </span>
-              {segment && <span className="phenomenon-segment">{segment.label}</span>}
-              {p.stimulus_locked === false && (
-                <span
-                  className="phenomenon-unlocked"
-                  title="No utterance ended in the 1–6 s before this. In a solo session that usually just means you were working quietly, so it lowers confidence rather than excluding it."
-                >
-                  unlocked
-                </span>
-              )}
-              {recordingId && (
+              {recordingId ? (
                 <span className="phenomenon-verdict">
                   <button
                     type="button"
@@ -317,6 +344,8 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
                     ✗
                   </button>
                 </span>
+              ) : (
+                <span className="phenomenon-verdict" />
               )}
             </li>
           );

@@ -819,29 +819,29 @@ details p {
 
 .phenomena-metrics {
   display: flex;
-  gap: 1.75rem;
+  gap: 1.5rem;
   flex-wrap: wrap;
-  margin: 0.75rem 0 0.5rem;
+  margin: 0.5rem 0 0.35rem;
 }
 
 .phenomena-caveat {
-  font-size: 0.82rem;
-  line-height: 1.5;
+  font-size: 0.76rem;
+  line-height: 1.4;
   color: #fbbf24;
   background: rgba(251, 191, 36, 0.08);
   border-left: 3px solid rgba(251, 191, 36, 0.5);
-  padding: 0.55rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   border-radius: 4px;
-  margin: 0.5rem 0;
+  margin: 0.35rem 0;
 }
 
 .phenomena-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
-  margin: 0.75rem 0 0.5rem;
+  margin: 0.5rem 0 0.4rem;
 }
 
 .phenomena-filters { display: flex; gap: 0.4rem; flex-wrap: wrap; }
@@ -863,13 +863,16 @@ details p {
 .phenomena-list { list-style: none; padding: 0; margin: 0; }
 
 .phenomenon-row {
+  /* Sized to fit half the window. The name is the only elastic track and truncates; every
+     other cell is nowrap, so nothing wraps to a second and third line the way "0.4A / -0.026
+     LP / FRR 5" did when the grid was wider than its container. */
   display: grid;
-  grid-template-columns: 3.5rem 3rem 11rem 1fr auto auto auto;
+  grid-template-columns: 3.1rem 3.1rem minmax(3rem, 1fr) auto auto auto;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.3rem 0.25rem;
+  gap: 0.45rem;
+  padding: 0.28rem 0.2rem;
   border-bottom: 1px solid #1e293b;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
 .phenomenon-time {
@@ -884,6 +887,9 @@ details p {
 }
 
 .phenomenon-kind {
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
   font-weight: 700;
   font-size: 0.75rem;
   text-align: center;
@@ -899,10 +905,27 @@ details p {
 .kind-x { background: #7f1d1d; color: #fecaca; }
 .kind-kvz { background: #155e75; color: #cffafe; }
 
-.phenomenon-name { color: #cbd5e1; }
-.phenomenon-magnitude { font-variant-numeric: tabular-nums; color: #e2e8f0; }
-.phenomenon-lp { color: #94a3b8; font-size: 0.78rem; }
-.phenomenon-segment { color: #94a3b8; font-size: 0.76rem; }
+.phenomenon-name {
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phenomenon-magnitude {
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.phenomenon-segment {
+  color: #94a3b8;
+  font-size: 0.74rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 4.5rem;
+}
 
 .phenomenon-unlocked {
   color: #94a3b8;
@@ -961,8 +984,8 @@ details p {
   /* Without this the card's padding is added on top of max-height, so a "70vh" column measured
      690px in a 900px viewport. A scroll container needs its stated height to be its real one. */
   box-sizing: border-box;
-  max-height: 70vh;
-  min-height: 18rem;
+  max-height: 85vh;
+  min-height: 22rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -971,8 +994,14 @@ details p {
 .analysis-column .phenomena-list,
 .analysis-column .timeline-list {
   flex: 1 1 auto;
-  min-height: 0;
+  /* min-height:0 lets the flex child shrink; the floor stops the header (metrics, caveats,
+     filter chips) from squeezing the list down to two or three visible rows, which is what it
+     did with a 218-row result. */
+  min-height: 14rem;
   overflow-y: auto;
+  /* Rows are laid out to fit the column, so a horizontal bar means something is mis-sized
+     rather than something the user should scroll. */
+  overflow-x: hidden;
   overscroll-behavior: contain;
 }
 
@@ -1007,3 +1036,27 @@ details p {
   outline: 2px solid #60a5fa;
   outline-offset: -2px;
 }
+
+/* Segment label and the "unlocked" marker share one always-present cell so the verdict buttons
+   stay in the same column on every row. */
+.phenomenon-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.phenomena-caveats {
+  margin: 0.35rem 0;
+  font-size: 0.78rem;
+}
+
+.phenomena-caveats > summary {
+  cursor: pointer;
+  color: #fbbf24;
+  padding: 0.25rem 0;
+  list-style-position: inside;
+}
+
+.reviewed-line { margin: 0.25rem 0; }
