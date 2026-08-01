@@ -111,10 +111,9 @@ what makes the rest of the design possible.
 
 ### 2.3 Function roles — and why this is a solo system
 
-**The target corpus is solo.** Every recording in
-`~/Documents/mindwalking/2024-11-SVB-Solo/mindwalker-recordings/` is a single-operator session
-(`Solo40`, `Solo44`, `Solo46`), and the intended use of NeuroNarrative is one person reviewing
-their own session afterwards. That is not a detail — it invalidates the speaker-diarisation
+**The target corpus is solo.** Every recording in the operator's archive is a single-operator
+session, and the intended use of NeuroNarrative is one person reviewing their own session
+afterwards. That is not a detail — it invalidates the speaker-diarisation
 approach and changes what the transcript can be expected to contain.
 
 There is **one voice**. The operator alternates between two *functions*: issuing the instruction

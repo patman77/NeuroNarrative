@@ -27,7 +27,7 @@ LP_SCALE_MIN = 1.0
 LP_SCALE_MAX = 6.5
 
 # Movement is judged against the session's *own* distribution, not a fixed constant. A fixed
-# 2.0 LP/s missed the clearest artefact in the corpus: Solo46 has a 0.37 LP down-and-up excursion
+# 2.0 LP/s missed the clearest artefact in the corpus: the 54-minute session has a 0.37 LP down-and-up excursion
 # at 1.57 LP/s eight seconds in, while the rest of that session never exceeds 0.067 LP/s. It is
 # 23x the session's normal maximum rate and obviously mechanical, but under any threshold chosen
 # to be safe across devices.

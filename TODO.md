@@ -53,8 +53,8 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 ## P8 – MindWalking phenomenon detection
 
-Design docs written 2026-07-31 from the two source manuals (`Mindwalking_BK3_ebook.pdf`,
-`Mindwalking_mwkurs_ebook.pdf`); the roadmap lives in `docs/phenomena-detection-design.md` §11.
+Design docs written 2026-07-31 from the two source manuals (BK3 and the mw-Kurs); the roadmap
+lives in `docs/phenomena-detection-design.md` §11.
 **Stages 1-4 are built** (2026-08-01); stages 5-8 are still design only. `docs/status-2026-08-01.md` is the current-state snapshot, including what is unproven.
 
 | Item | Status | Notes |
@@ -64,7 +64,7 @@ Design docs written 2026-07-31 from the two source manuals (`Mindwalking_BK3_ebo
 | Narrative/summary design | ✅ | `docs/session-narrative-design.md` – BK3 grammar as a parse tree, cue-based function roles (**solo: one voice, no diarisation**), phenomenon-aware prompts, auto-Sitzungsbericht |
 | Solo cue phrasings + observed variants | ✅ | `services/protocol.py` `CUE_INVENTORY`, with an explicit "observed in practice, NOT in BK3" group. Stem-tolerant matching for ASR damage ("ruft ihr" → "Ruf dir"). Instruction turns matched on the reference transcript: 13 → 29 of 303 |
 | L0: shared channel resolver, LP domain | ✅ | `backend/app/services/phenomena/conditioning.py` + the mirrored resolver in `gsrParser.ts`. Five-step resolution order (Data+Baseline → Resistance+Baseline → Resistance → Conductance → Baseline), median-interval time units, `ChannelResolution` metadata returned by `/api/analyze` and shown as the preview's "Channel" metric. Golden fixture `tests/fixtures/mindwalker_export.csv` is asserted by both test suites. On the real 54-min recording: strategy `data+baseline`, 9.2e-5 LP resolution, 0.05 s for 161k samples, **23 → 64 events** |
-| L1 primitives + A/T/BE/LPA/LPD/LPB rules | ✅ | `phenomena/primitives.py` (tonic/phasic split, hysteresis leg segmentation) + `detectors/{deflection,discharge,level}.py` + `fusion.py`. Exposed as `phenomena` and `session_metrics` on `/api/analyze`. **Backend only — no UI yet.** Real sessions (24/28/54 min): 0.02–0.05 s each; Solo46 gives A=110, T=189, BE=34, LPA_slow=19, LPB 1.52 LP, LPD 3.5 A/min |
+| L1 primitives + A/T/BE/LPA/LPD/LPB rules | ✅ | `phenomena/primitives.py` (tonic/phasic split, hysteresis leg segmentation) + `detectors/{deflection,discharge,level}.py` + `fusion.py`. Exposed as `phenomena` and `session_metrics` on `/api/analyze`. **Backend only — no UI yet.** Real sessions (24/28/54 min): 0.02–0.05 s each; the 54-minute session gives A=110, T=189, BE=34, LPA_slow=19, LPB 1.52 LP, LPD 3.5 A/min |
 | Phenomena in the UI | ✅ | `components/PhenomenaPanel.tsx` – ranked "Größte Ladung zuerst", per-kind filter chips, click-to-seek, uncalibrated/artefact caveats shown. `EventTimeline` still shows the legacy list alongside |
 | Stimulus-locked scoring, `X`, `KVZ` | ✅ | `detectors/stimulus.py` + `services/protocol.py`. Reference recording: 191 locked / 179 unlocked, 19 `X`, 30 `KVZ`. Unlocked lowers confidence, never filters — in solo it usually just means the operator was quiet |
 | Calibration (A-unit, solo offset) + artefact masking | ✅ | `calibration.py` + `detectors/artefact.py`. `lp_offset`/`a_unit_lp` optional on `/api/analyze`; **no zone is named without an offset**. Movement reported as `KB`, not silently masked. **No UI for the inputs yet** |

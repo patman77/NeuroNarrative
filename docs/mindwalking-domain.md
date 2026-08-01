@@ -4,7 +4,8 @@ Reference layer for the two source manuals. Everything in `phenomena-detection-d
 `session-narrative-design.md` is built on the definitions here, so this file is the place to
 correct a misreading of the method — not those two.
 
-Sources, both by Rolf-Ulrich Kramer (`~/Documents/mindwalking/2025-10-10-Skripte/`):
+Sources, both by Rolf-Ulrich Kramer. They are copyrighted course material held locally by the
+operator and are deliberately **not** part of this repository:
 
 - **mw-Kurs** — *Wie man den MindWalker benutzt*, version 24.08.2023. The device manual: what
   the instrument measures, how the session leader reads it, and the full glossary of phenomena.
@@ -193,8 +194,8 @@ evidence. Our current detector has no notion of this.
 
 ## 4. What the recordings actually contain
 
-Measured on `~/Documents/mindwalking/2024-11-SVB-Solo/mindwalker-recordings/` (three substantial
-solo sessions plus two fragments; 24.0, 28.4 and 53.9 minutes, each with a paired WAV).
+Measured on the operator's own recordings, which live outside this repository: three substantial
+solo sessions plus two fragments, 24.0, 28.4 and 53.9 minutes, each with a paired WAV.
 
 The real export schema is **not** what our fixtures use:
 

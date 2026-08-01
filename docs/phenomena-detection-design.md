@@ -627,7 +627,7 @@ candidates as it kept. Now 5.0 s — the upper edge of the standard SCR range, a
 plateaus in all three sessions. Still unvalidated; the manual never quantifies "schnell".
 
 **A fixed artefact rate threshold does not work.** §2.2 proposed `|dLP/dt| > ~2 LP/s`. The
-clearest artefact in the corpus — a 0.37 LP excursion eight seconds into Solo46, 23x that
+clearest artefact in the corpus — a 0.37 LP excursion eight seconds into the 54-minute session, 23x that
 session's normal maximum rate — sits at 1.57 LP/s and slipped under it. The rule is now
 session-relative (`median + 40*MAD`) with a floor at 1.0 LP/s. The floor matters in the other
 direction: an initial 0.15 LP/s floor was *inside* the physiological range and masked genuine
@@ -698,7 +698,7 @@ with every future recording.
 
 ## 13. Measured, on the reference recording
 
-`Prefix_20251116_Solo46.csv` + `.wav`, 53.9 minutes, 161 750 samples at 50 Hz, 1 576 transcript
+`the 54-minute reference session, 53.9 minutes, 161 750 samples at 50 Hz, 1 576 transcript
 words.
 
 | | |

@@ -24,11 +24,11 @@ from ..schema import Phenomenon, PhenomenonKind
 # by rise-time cutoff, across the three real sessions:
 #
 #     cutoff:      3.0s   4.0s   5.0s   6.0s
-#     Solo40:        27     37     46     49
-#     Solo44:         7      8     13     13
-#     Solo46:        13     25     32     34
+#     28 min:        27     37     46     49
+#     24 min:         7      8     13     13
+#     54 min:        13     25     32     34
 #
-# The design proposed 3.0 s, which turns out to cut the population at its median — on Solo46 the
+# The design proposed 3.0 s, which turns out to cut the population at its median — in the 54-minute session the
 # median rise time is 3.62 s — so it was discarding as many candidates as it kept. 5.0 s is the
 # upper edge of the standard SCR rise-time range (1-5 s) and is where the count plateaus in all
 # three sessions, which is weak evidence that it lands past the real population rather than

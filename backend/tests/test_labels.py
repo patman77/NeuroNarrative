@@ -33,7 +33,7 @@ def test_recording_id_is_content_derived(tmp_path):
     """Labels must survive the file being copied and re-staged under a different name."""
     first = tmp_path / "session.csv"
     first.write_text("time,resistance\n0,5.0\n1,5.1\n")
-    second = tmp_path / "Prefix_20251116_Solo46.csv"
+    second = tmp_path / "renamed-after-restaging.csv"
     second.write_text(first.read_text())
 
     assert recording_id(first) == recording_id(second)

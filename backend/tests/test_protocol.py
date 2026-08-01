@@ -155,7 +155,7 @@ def test_a_rail_excursion_is_masked():
 
 
 def test_movement_far_faster_than_the_session_is_masked():
-    """The real case: Solo46 has a 1.57 LP/s excursion where the session never exceeds 0.067."""
+    """The real case: one session has a 1.57 LP/s excursion where it never otherwise exceeds 0.067."""
     t, lp = quiet(120.0)
     spike = (t >= 60) & (t < 60.2)
     lp[spike] -= 0.35
