@@ -160,14 +160,22 @@ Setting `NEURONARRATIVE_FRONTEND_DIST` mounts the built SPA at `/` through `SpaS
 
 ### Seeking, and the two-column results layout
 
-Phenomena (left) and detected events (right) sit in `.analysis-columns`, a two-up grid that
-collapses to one column below 1100 px. Each column is `display:flex` with a bounded `max-height`;
+Phenomena (left) and detected events (right) sit in `.analysis-columns`, a 50/50 grid that
+collapses to one column only below **720 px**. The breakpoint was originally 1100 px, which is
+wider than the desktop window — so the layout collapsed to a single column *and* dropped the
+height cap, and the feature was simply absent where it was meant to be used. Don't raise it.
+Both columns render unconditionally; a conditional column would leave the grid half empty. Tracks
+are `minmax(0, 1fr)`, not `1fr`, so a long unbreakable row cannot push one column wider than its
+share, and `box-sizing: border-box` keeps the card padding from being added on top of the 70vh
+cap. Each column is `display:flex` with a bounded `max-height`;
 the **list** inside scrolls, not the card, so the kind filters and the uncalibrated/artefact
 caveats stay visible while you read. `min-height: 0` on the scrolling child is what actually
 allows a flex item to shrink enough to scroll — remove it and the column just grows.
 
 Every row seeks: the whole `.phenomenon-row` and `.timeline-event-card` are click targets, with
-`stopPropagation` on the verdict and "Jump to" buttons so those do not also fire a seek.
+`stopPropagation` on the verdict and "Jump to" buttons so those do not also fire a seek. A click
+also scrolls the plot back into view (`revealPlot`, via an empty anchor `<div>` above the
+preview), since the columns sit below it and you would otherwise seek something you cannot see.
 
 Seeks go through `handleSeek` in `App.tsx`, **not** `seekRequestRef.current` directly. The ref is
 only populated while `SignalPreview` is mounted, so a click with the preview collapsed used to do

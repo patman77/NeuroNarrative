@@ -937,22 +937,32 @@ details p {
 /* --- Side-by-side analysis columns ---------------------------------------- */
 
 /*
-  Phenomena (left) and events (right). Each column is a flex container with a bounded height so
-  the *lists* scroll while their headers, filters and caveats stay put — scrolling the whole card
-  would push the kind filters and the uncalibrated warning out of view, which are exactly the
-  things you need while reading the list.
+  Phenomena (left) and events (right), 50/50, directly below the detail view. Each column is a
+  bounded-height flex container in which the *list* scrolls — not the whole card — so the kind
+  filters and the uncalibrated/artefact caveats stay visible while you read the rows.
+
+  `minmax(0, 1fr)` rather than `1fr`: a grid track's default minimum is `auto`, so a long
+  unbreakable row would push the column wider than its share and break the 50/50 split.
+
+  The stacking breakpoint is deliberately low. An earlier 1100px broke the feature outright in
+  the desktop window, which is narrower than that: it collapsed to one column *and* dropped the
+  height cap, so there was neither a side-by-side layout nor anything scrollable.
 */
 .analysis-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .analysis-column {
   display: flex;
   flex-direction: column;
-  max-height: 75vh;
+  /* Without this the card's padding is added on top of max-height, so a "70vh" column measured
+     690px in a 900px viewport. A scroll container needs its stated height to be its real one. */
+  box-sizing: border-box;
+  max-height: 70vh;
+  min-height: 18rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -966,23 +976,17 @@ details p {
   overscroll-behavior: contain;
 }
 
-.analysis-column .timeline {
+.analysis-column .timeline,
+.analysis-column .phenomena-panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 720px) {
   .analysis-columns {
-    grid-template-columns: 1fr;
-  }
-  .analysis-column {
-    max-height: none;
-  }
-  .analysis-column .phenomena-list,
-  .analysis-column .timeline-list {
-    max-height: 60vh;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

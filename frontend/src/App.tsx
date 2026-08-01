@@ -196,6 +196,7 @@ function App() {
   // function and publishes it into `seekRequestRef` on mount, so without this a click on an
   // event or phenomenon would silently do nothing whenever the preview happened to be closed.
   const pendingSeekRef = useRef<number | null>(null);
+  const previewAnchorRef = useRef<HTMLDivElement | null>(null);
   const [ruleset, setRuleset] = useState<string>("default");
   const [preWindow, setPreWindow] = useState<number>(5);
   const [postWindow, setPostWindow] = useState<number>(7);
@@ -349,14 +350,22 @@ function App() {
 
       WaveSurfer's `seekTo` moves the playback head, so pressing play afterwards resumes from
       the clicked moment rather than from wherever the head happened to be. */
-  const handleSeek = useCallback((time: number) => {
-    if (seekRequestRef.current) {
-      seekRequestRef.current(time);
-      return;
-    }
-    pendingSeekRef.current = time;
-    setPreviewVisible(true);
+  const revealPlot = useCallback(() => {
+    previewAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
+
+  const handleSeek = useCallback(
+    (time: number) => {
+      if (seekRequestRef.current) {
+        seekRequestRef.current(time);
+        revealPlot();
+        return;
+      }
+      pendingSeekRef.current = time;
+      setPreviewVisible(true);
+    },
+    [revealPlot]
+  );
 
   // Flush a seek that was requested before the preview existed. `seekRequestRef` is a ref, so
   // its assignment does not re-render; poll across a few frames instead of guessing a delay.
@@ -370,6 +379,7 @@ function App() {
       if (seekRequestRef.current) {
         seekRequestRef.current(time);
         pendingSeekRef.current = null;
+        revealPlot();
         return;
       }
       if (frames++ < 60) raf = requestAnimationFrame(flush);
@@ -377,7 +387,7 @@ function App() {
     };
     raf = requestAnimationFrame(flush);
     return () => cancelAnimationFrame(raf);
-  }, [previewVisible, gsrPreview]);
+  }, [previewVisible, gsrPreview, revealPlot]);
 
   const analyzeMutation = useMutation<AnalysisResponse, unknown, void>({
     mutationFn: async () => {
@@ -573,6 +583,9 @@ function App() {
           />
         </section>
 
+        {/* Scroll anchor: clicking a row jumps the player *and* brings the plot into view. */}
+        <div ref={previewAnchorRef} />
+
         {previewVisible && gsrPreview ? (
           <SignalPreview
             data={gsrPreview}
@@ -611,18 +624,18 @@ function App() {
           two lists are read against each other, so they need to be visible at the same time.
         */}
         <div className="analysis-columns">
-          {(analyzeMutation.data?.phenomena?.length ?? 0) > 0 && (
-            <section className="card analysis-column">
-              <PhenomenaPanel
-                recordingId={analyzeMutation.data?.recording_id ?? ""}
-                phenomena={analyzeMutation.data?.phenomena ?? []}
-                metrics={analyzeMutation.data?.session_metrics}
-                protocol={analyzeMutation.data?.protocol}
-                artefacts={analyzeMutation.data?.artefacts}
-                onSeek={handleSeek}
-              />
-            </section>
-          )}
+          {/* Rendered unconditionally: a conditional column would leave the grid half empty
+              and the split would stop being 50/50. The panel has its own empty state. */}
+          <section className="card analysis-column">
+            <PhenomenaPanel
+              recordingId={analyzeMutation.data?.recording_id ?? ""}
+              phenomena={analyzeMutation.data?.phenomena ?? []}
+              metrics={analyzeMutation.data?.session_metrics}
+              protocol={analyzeMutation.data?.protocol}
+              artefacts={analyzeMutation.data?.artefacts}
+              onSeek={handleSeek}
+            />
+          </section>
 
           <section className="card analysis-column">
             <EventTimeline

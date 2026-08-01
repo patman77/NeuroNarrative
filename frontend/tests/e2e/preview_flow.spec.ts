@@ -157,24 +157,49 @@ test('file dialog filters: the CSV input declares MIME types, not just an extens
   expect(wavAccept).toContain('audio/wav');
 });
 
-test('analysis columns: phenomena and events sit side by side and scroll independently', async ({ page }) => {
+test('analysis columns: side by side and scrollable at real window widths', async ({ page }) => {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
 
-  // The container is present even before an analysis; the columns fill in with results.
-  const columns = page.locator('.analysis-columns');
-  await expect(columns).toHaveCount(1);
+  // Both columns render before any analysis, so the 50/50 split never degenerates into one
+  // panel occupying half the grid with the other half empty.
+  await expect(page.locator('.analysis-column')).toHaveCount(2);
 
-  // Side by side, not stacked, at desktop width.
-  await page.setViewportSize({ width: 1400, height: 900 });
-  const template = await columns.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
-  expect(template.split(' ').length).toBe(2);
+  // Regression: the stacking breakpoint was originally 1100px, which is wider than the desktop
+  // window. That collapsed the layout to a single column *and* dropped the height cap, so the
+  // feature was absent exactly where it was meant to be used. Check the widths that matter.
+  for (const width of [900, 1024, 1280, 1500]) {
+    await page.setViewportSize({ width, height: 900 });
+    const boxes = await page.locator('.analysis-column').evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect())
+    );
+    expect(Math.abs(boxes[0].y - boxes[1].y), `stacked at ${width}px`).toBeLessThan(5);
+    expect(Math.abs(boxes[0].width - boxes[1].width), `uneven at ${width}px`).toBeLessThan(5);
+  }
 
-  // Stacks below the breakpoint rather than crushing two columns into a phone width.
-  await page.setViewportSize({ width: 800, height: 900 });
-  const narrow = await columns.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
-  expect(narrow.split(' ').length).toBe(1);
+  // Only a genuinely narrow window stacks them.
+  await page.setViewportSize({ width: 600, height: 900 });
+  const stacked = await page.locator('.analysis-column').evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect())
+  );
+  expect(stacked[1].y).toBeGreaterThan(stacked[0].y);
 });
+
+test('analysis columns bound their height', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  const height = (await page.locator('.analysis-column').first().boundingBox())?.height ?? 0;
+  // 70vh, with box-sizing:border-box so the card padding is not added on top of it — without
+  // that the column measured 690px in a 900px viewport and the cap was meaningless.
+  expect(height).toBeLessThanOrEqual(700 * 0.7 + 2);
+});
+
+// The lists themselves only exist once an analysis has produced rows, so their scrolling is not
+// asserted here — this suite runs against the dev server with no backend. Verified manually
+// against a real analysis at a 520px viewport: both `.phenomena-list` and `.timeline-list`
+// reported scrollHeight > clientHeight with overflow-y: auto.
 
 test('clicking the overview chart moves the playback head', async ({ page }) => {
   await page.goto('/');
