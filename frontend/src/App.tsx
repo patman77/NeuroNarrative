@@ -192,6 +192,10 @@ function App() {
   const [isParsingCsv, setIsParsingCsv] = useState<boolean>(false);
   const latestParseId = useRef(0);
   const seekRequestRef = useRef<((time: number) => void) | null>(null);
+  // A seek requested while the preview is collapsed. `SignalPreview` owns the only real seek
+  // function and publishes it into `seekRequestRef` on mount, so without this a click on an
+  // event or phenomenon would silently do nothing whenever the preview happened to be closed.
+  const pendingSeekRef = useRef<number | null>(null);
   const [ruleset, setRuleset] = useState<string>("default");
   const [preWindow, setPreWindow] = useState<number>(5);
   const [postWindow, setPostWindow] = useState<number>(7);
@@ -340,6 +344,40 @@ function App() {
       wavName: wavFile?.name ?? null
     });
   }, [previewDisabled, csvFile, wavFile, gsrPreview, parseError]);
+
+  /** Jump the player to `time`, opening the preview first if it is not mounted.
+
+      WaveSurfer's `seekTo` moves the playback head, so pressing play afterwards resumes from
+      the clicked moment rather than from wherever the head happened to be. */
+  const handleSeek = useCallback((time: number) => {
+    if (seekRequestRef.current) {
+      seekRequestRef.current(time);
+      return;
+    }
+    pendingSeekRef.current = time;
+    setPreviewVisible(true);
+  }, []);
+
+  // Flush a seek that was requested before the preview existed. `seekRequestRef` is a ref, so
+  // its assignment does not re-render; poll across a few frames instead of guessing a delay.
+  useEffect(() => {
+    if (!previewVisible || pendingSeekRef.current === null) return;
+    let frames = 0;
+    let raf = 0;
+    const flush = () => {
+      const time = pendingSeekRef.current;
+      if (time === null) return;
+      if (seekRequestRef.current) {
+        seekRequestRef.current(time);
+        pendingSeekRef.current = null;
+        return;
+      }
+      if (frames++ < 60) raf = requestAnimationFrame(flush);
+      else pendingSeekRef.current = null;
+    };
+    raf = requestAnimationFrame(flush);
+    return () => cancelAnimationFrame(raf);
+  }, [previewVisible, gsrPreview]);
 
   const analyzeMutation = useMutation<AnalysisResponse, unknown, void>({
     mutationFn: async () => {
@@ -567,35 +605,39 @@ function App() {
           </section>
         )}
 
-        {(analyzeMutation.data?.phenomena?.length ?? 0) > 0 && (
-          <section className="card">
-            <PhenomenaPanel
-              recordingId={analyzeMutation.data?.recording_id ?? ""}
-              phenomena={analyzeMutation.data?.phenomena ?? []}
-              metrics={analyzeMutation.data?.session_metrics}
-              protocol={analyzeMutation.data?.protocol}
-              artefacts={analyzeMutation.data?.artefacts}
-              onSeek={(time) => { seekRequestRef.current?.(time); }}
+        {/*
+          Phenomena and events sit side by side, each scrolling independently. Stacked, a
+          54-minute session ran to hundreds of rows and the page became unusably tall — and the
+          two lists are read against each other, so they need to be visible at the same time.
+        */}
+        <div className="analysis-columns">
+          {(analyzeMutation.data?.phenomena?.length ?? 0) > 0 && (
+            <section className="card analysis-column">
+              <PhenomenaPanel
+                recordingId={analyzeMutation.data?.recording_id ?? ""}
+                phenomena={analyzeMutation.data?.phenomena ?? []}
+                metrics={analyzeMutation.data?.session_metrics}
+                protocol={analyzeMutation.data?.protocol}
+                artefacts={analyzeMutation.data?.artefacts}
+                onSeek={handleSeek}
+              />
+            </section>
+          )}
+
+          <section className="card analysis-column">
+            <EventTimeline
+              events={timelineEvents}
+              isLoading={analyzeMutation.isPending}
+              audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
+              onSeek={handleSeek}
+              summarizerEnabled={health?.summarizer_enabled ?? true}
+              summarizerStatus={health?.summarizer_status}
             />
           </section>
-        )}
+        </div>
 
         <section className="card">
-          <EventTimeline
-            events={timelineEvents}
-            isLoading={analyzeMutation.isPending}
-            audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
-            onSeek={(time) => { seekRequestRef.current?.(time); }}
-            summarizerEnabled={health?.summarizer_enabled ?? true}
-            summarizerStatus={health?.summarizer_status}
-          />
-        </section>
-
-        <section className="card">
-          <TranscriptTimeline
-            transcript={transcript}
-            onSeek={(time) => seekRequestRef.current?.(time)}
-          />
+          <TranscriptTimeline transcript={transcript} onSeek={handleSeek} />
         </section>
       </main>
     </div>

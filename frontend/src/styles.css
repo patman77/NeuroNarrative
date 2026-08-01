@@ -933,3 +933,73 @@ details p {
 .calibration-fields { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; }
 .calibration-fields label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.25rem; }
 .calibration-fields input { width: 8rem; }
+
+/* --- Side-by-side analysis columns ---------------------------------------- */
+
+/*
+  Phenomena (left) and events (right). Each column is a flex container with a bounded height so
+  the *lists* scroll while their headers, filters and caveats stay put — scrolling the whole card
+  would push the kind filters and the uncalibrated warning out of view, which are exactly the
+  things you need while reading the list.
+*/
+.analysis-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.analysis-column {
+  display: flex;
+  flex-direction: column;
+  max-height: 75vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* min-height:0 is what actually lets a flex child shrink enough to scroll. */
+.analysis-column .phenomena-list,
+.analysis-column .timeline-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.analysis-column .timeline {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 1100px) {
+  .analysis-columns {
+    grid-template-columns: 1fr;
+  }
+  .analysis-column {
+    max-height: none;
+  }
+  .analysis-column .phenomena-list,
+  .analysis-column .timeline-list {
+    max-height: 60vh;
+  }
+}
+
+/* Whole-row click targets. The row is a real button-row: pointer, hover feedback, and a
+   keyboard-reachable seek control, without nesting interactive elements inside a <button>. */
+.phenomenon-row,
+.timeline-event-card {
+  cursor: pointer;
+}
+
+.phenomenon-row:hover,
+.timeline-event-card:hover {
+  background: #172033;
+}
+
+.phenomenon-row:focus-visible,
+.timeline-event-card:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: -2px;
+}

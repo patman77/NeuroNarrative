@@ -252,8 +252,23 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
         {visible.slice(0, 200).map((p) => {
           const segment = segmentAt(p.t_start);
           return (
-            <li key={p.id} className="phenomenon-row">
-              <button type="button" className="phenomenon-time" onClick={() => onSeek?.(p.t_start)}>
+            <li
+              key={p.id}
+              className="phenomenon-row"
+              // The whole row seeks. Keyboard users get the same via the time button below, so
+              // the row itself stays a plain <li> rather than nesting the verdict buttons
+              // inside an interactive element.
+              onClick={() => onSeek?.(p.t_start)}
+            >
+              <button
+                type="button"
+                className="phenomenon-time"
+                title="Jump the player here"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSeek?.(p.t_start);
+                }}
+              >
                 {formatTime(p.t_start)}
               </button>
               <span className={`phenomenon-kind kind-${p.kind.toLowerCase()}`} title={KIND_HINT[p.kind] ?? ""}>
@@ -282,7 +297,10 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
                     className={labels[p.id] === "confirmed" ? "verdict-button verdict-yes" : "verdict-button"}
                     aria-pressed={labels[p.id] === "confirmed"}
                     title="This is real. Click again to clear."
-                    onClick={() => setVerdict(p.id, "confirmed")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setVerdict(p.id, "confirmed");
+                    }}
                   >
                     ✓
                   </button>
@@ -291,7 +309,10 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
                     className={labels[p.id] === "rejected" ? "verdict-button verdict-no" : "verdict-button"}
                     aria-pressed={labels[p.id] === "rejected"}
                     title="This is not real. Click again to clear."
-                    onClick={() => setVerdict(p.id, "rejected")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setVerdict(p.id, "rejected");
+                    }}
                   >
                     ✗
                   </button>

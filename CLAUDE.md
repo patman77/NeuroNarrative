@@ -158,6 +158,24 @@ Affinity (`sched_getaffinity`) and cgroup v1/v2 quotas are honoured, so a 2-core
 
 Setting `NEURONARRATIVE_FRONTEND_DIST` mounts the built SPA at `/` through `SpaStaticFiles`, a `StaticFiles` subclass that falls back to `index.html` on 404 (plain `html=True` only covers directory indexes). API routes are registered *before* the mount, so they still win. This is the single-process mode desktop packaging will use — same origin, no proxy, no CORS.
 
+### Seeking, and the two-column results layout
+
+Phenomena (left) and detected events (right) sit in `.analysis-columns`, a two-up grid that
+collapses to one column below 1100 px. Each column is `display:flex` with a bounded `max-height`;
+the **list** inside scrolls, not the card, so the kind filters and the uncalibrated/artefact
+caveats stay visible while you read. `min-height: 0` on the scrolling child is what actually
+allows a flex item to shrink enough to scroll — remove it and the column just grows.
+
+Every row seeks: the whole `.phenomenon-row` and `.timeline-event-card` are click targets, with
+`stopPropagation` on the verdict and "Jump to" buttons so those do not also fire a seek.
+
+Seeks go through `handleSeek` in `App.tsx`, **not** `seekRequestRef.current` directly. The ref is
+only populated while `SignalPreview` is mounted, so a click with the preview collapsed used to do
+nothing at all; `handleSeek` opens the preview, parks the time in `pendingSeekRef`, and flushes it
+across `requestAnimationFrame` once the ref appears (refs do not re-render, so there is nothing to
+wait on declaratively). WaveSurfer's `seekTo` moves the playback head, so pressing play afterwards
+resumes from the clicked moment.
+
 ### File dialog filters
 
 `<input type="file" accept="...">` needs **MIME types, not just extensions**, or the desktop shell shows no filter at all. WKWebView hands pywebview only `_acceptedMIMETypes()` (`webview/platforms/cocoa.py`, the `runOpenPanel` delegate), and that array is *empty* for an extension-only accept list — so `accept=".csv"` produced an unfiltered open panel listing every file on the machine, while the WAV input filtered correctly because it happened to carry `audio/wav`.

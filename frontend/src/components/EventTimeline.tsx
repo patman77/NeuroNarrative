@@ -148,7 +148,13 @@ export function EventTimeline({
 
       <ul className="timeline-list">
         {events.map((event) => (
-          <li key={event.event_id} className="timeline-event-card">
+          <li
+            key={event.event_id}
+            className="timeline-event-card"
+            // The whole card seeks, summary text included — the summary is usually what you are
+            // reading when you decide you want to hear that moment.
+            onClick={onSeek ? () => onSeek(event.time_sec) : undefined}
+          >
             <div className="timeline-row">
               <div className="timeline-row-left">
                 <span className="event-badge">{event.rule}</span>
@@ -165,7 +171,10 @@ export function EventTimeline({
                 {onSeek && (
                   <button
                     className="btn-small btn-jump"
-                    onClick={() => onSeek(event.time_sec)}
+                    onClick={(clickEvent) => {
+                      clickEvent.stopPropagation();
+                      onSeek(event.time_sec);
+                    }}
                     title={`Jump to ${formatTimeSec(event.time_sec)}`}
                   >
                     Jump to

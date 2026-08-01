@@ -156,3 +156,50 @@ test('file dialog filters: the CSV input declares MIME types, not just an extens
   expect(wavAccept).toContain('.wav');
   expect(wavAccept).toContain('audio/wav');
 });
+
+test('analysis columns: phenomena and events sit side by side and scroll independently', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  // The container is present even before an analysis; the columns fill in with results.
+  const columns = page.locator('.analysis-columns');
+  await expect(columns).toHaveCount(1);
+
+  // Side by side, not stacked, at desktop width.
+  await page.setViewportSize({ width: 1400, height: 900 });
+  const template = await columns.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+  expect(template.split(' ').length).toBe(2);
+
+  // Stacks below the breakpoint rather than crushing two columns into a phone width.
+  await page.setViewportSize({ width: 800, height: 900 });
+  const narrow = await columns.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+  expect(narrow.split(' ').length).toBe(1);
+});
+
+test('clicking the overview chart moves the playback head', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  const inputs = page.locator('input[type="file"]');
+  await inputs.nth(0).setInputFiles(CSV_PATH);
+  await page.waitForTimeout(1500);
+  await inputs.nth(1).setInputFiles(WAV_PATH);
+  await page.waitForTimeout(400);
+  await page.getByRole('banner').getByRole('button', { name: 'Preview' }).click();
+  await page.waitForTimeout(800);
+
+  await expect(page.locator('.signal-preview')).toBeVisible();
+
+  const before = await page.locator('text.gauge-value').textContent();
+  await page.locator('.overview-chart').click({ position: { x: 320, y: 20 } });
+  await page.waitForTimeout(400);
+  const after = await page.locator('text.gauge-value').textContent();
+
+  // The gauge tracks the playback head, so a seek that lands somewhere else changes the reading.
+  expect(after).not.toBe(before);
+});
+
+// NOTE: the "seek while the preview is collapsed" path — where `handleSeek` opens the preview and
+// flushes the pending seek once `SignalPreview` publishes its seek function — is deliberately not
+// covered here. Exercising it needs phenomenon or event rows, which only exist after a real
+// backend analysis, and this suite runs against the dev server alone.
