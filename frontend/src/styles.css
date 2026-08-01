@@ -814,3 +814,100 @@ details p {
     border: 1px solid #ccc;
   }
 }
+
+/* --- Phenomena panel ------------------------------------------------------ */
+
+.phenomena-metrics {
+  display: flex;
+  gap: 1.75rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.phenomena-caveat {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  border-left: 3px solid rgba(251, 191, 36, 0.5);
+  padding: 0.55rem 0.75rem;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+}
+
+.phenomena-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.phenomena-filters { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+.kind-chip {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kind-chip-off { opacity: 0.4; text-decoration: line-through; }
+.kind-count { opacity: 0.7; font-weight: 400; margin-left: 0.25rem; }
+
+.phenomena-list { list-style: none; padding: 0; margin: 0; }
+
+.phenomenon-row {
+  display: grid;
+  grid-template-columns: 3.5rem 3rem 12rem 1fr auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0.25rem;
+  border-bottom: 1px solid #1e293b;
+  font-size: 0.85rem;
+}
+
+.phenomenon-time {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.phenomenon-kind {
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-align: center;
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+  background: #334155;
+}
+
+.kind-be { background: #b45309; color: #fff; }
+.kind-a { background: #1d4ed8; color: #fff; }
+.kind-lpa_slow { background: #6d28d9; color: #fff; }
+.kind-kb { background: #4b5563; color: #d1d5db; }
+.kind-x { background: #7f1d1d; color: #fecaca; }
+.kind-kvz { background: #155e75; color: #cffafe; }
+
+.phenomenon-name { color: #cbd5e1; }
+.phenomenon-magnitude { font-variant-numeric: tabular-nums; color: #e2e8f0; }
+.phenomenon-lp { color: #94a3b8; font-size: 0.78rem; }
+.phenomenon-segment { color: #94a3b8; font-size: 0.76rem; }
+
+.phenomenon-unlocked {
+  color: #94a3b8;
+  font-size: 0.7rem;
+  border: 1px solid #334155;
+  border-radius: 3px;
+  padding: 0 0.3rem;
+}

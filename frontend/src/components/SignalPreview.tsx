@@ -213,13 +213,16 @@ function useInterpolatedSample(samples: ParsedGsrSample[], timeSec: number): Par
     const ratio = (timeSec - lower.timeSec) / (upper.timeSec - lower.timeSec);
     const clampedRatio = clamp(ratio, 0, 1);
 
+    const lp = lower.lp + (upper.lp - lower.lp) * clampedRatio;
+
     return {
       timeSec,
-      value: lower.value + (upper.value - lower.value) * clampedRatio,
-      rawValue: lower.rawValue + (upper.rawValue - lower.rawValue) * clampedRatio,
-      // Baseline is a step function (changes only on normalize), so use lower sample's baseline
+      lp,
+      value: lp,
+      rawValue: lp,
+      // Baseline is a step function (it only moves when the device re-centres its window), so
+      // take the lower sample's rather than interpolating across a step.
       baseline: lower.baseline,
-      // Resistance is continuous, so interpolate it
       resistance: lower.resistance !== undefined && upper.resistance !== undefined
         ? lower.resistance + (upper.resistance - lower.resistance) * clampedRatio
         : lower.resistance ?? upper.resistance
@@ -227,75 +230,17 @@ function useInterpolatedSample(samples: ParsedGsrSample[], timeSec: number): Par
   }, [samples, timeSec]);
 }
 
-// Calculate gauge position from baseline and resistance
-// Baseline represents the normalized center position (1-6.5 range)
-// Resistance decrease → needle moves RIGHT (higher gauge value)
-// Resistance increase → needle moves LEFT (lower gauge value)
-function calculateGaugePosition(
-  sample: ParsedGsrSample,
-  samples: ParsedGsrSample[],
-  hasBaseline: boolean,
-  hasResistance: boolean
-): number {
-  // If we have baseline, use it as the primary gauge position
-  if (hasBaseline && sample.baseline !== undefined) {
-    if (hasResistance && sample.resistance !== undefined) {
-      // Find the reference resistance for the current baseline period
-      // This is the resistance value when the current baseline was first established
-      let referenceResistance: number | undefined = undefined;
-
-      // Look through samples up to current time to find the most recent baseline change point
-      for (let i = 0; i < samples.length; i++) {
-        const s = samples[i];
-
-        // Only look at samples up to current time
-        if (s.timeSec > sample.timeSec) {
-          break;
-        }
-
-        // Check if this sample has a valid baseline and resistance
-        if (s.baseline === undefined || s.resistance === undefined) {
-          continue;
-        }
-
-        // Check if this is the start of a baseline period matching current baseline
-        if (s.baseline === sample.baseline) {
-          // Is this the start of a new baseline period?
-          if (i === 0 || samples[i - 1].baseline !== sample.baseline) {
-            // Found baseline change point - use resistance at this point as reference
-            referenceResistance = s.resistance;
-            // Don't break - keep looking for more recent changes (in case baseline oscillates)
-          } else if (referenceResistance === undefined) {
-            // We're in the middle of a baseline period and haven't found the start yet
-            // This can happen if earlier samples are missing baseline data
-            referenceResistance = s.resistance;
-          }
-        }
-      }
-
-      // If we found a reference resistance, calculate the needle position
-      if (referenceResistance !== undefined) {
-        // Calculate resistance change in kOhm
-        const resistanceDelta = sample.resistance - referenceResistance;
-
-        // Convert resistance change to gauge units
-        // Negative scale: decrease resistance → move right (increase gauge value)
-        // Scale factor: 1 kOhm change ≈ 0.5 gauge units
-        const RESISTANCE_TO_GAUGE_SCALE = -0.5;
-        const gaugeAdjustment = resistanceDelta * RESISTANCE_TO_GAUGE_SCALE;
-
-        // Calculate final position and clamp to valid range
-        const position = sample.baseline + gaugeAdjustment;
-        return clamp(position, DISPLAY_MIN, DISPLAY_MAX);
-      }
-    }
-
-    // If no resistance data or couldn't find reference, just use baseline
-    return clamp(sample.baseline, DISPLAY_MIN, DISPLAY_MAX);
-  }
-
-  // Fallback to the original value
-  return sample.value;
+/**
+ * The gauge shows the charge level (LP), which is what the parser now resolves directly.
+ *
+ * This used to reconstruct a needle position by walking every prior sample to find where the
+ * current Baseline step began, then offsetting by `resistanceDelta * -0.5` — a linear kOhm→gauge
+ * factor that cannot be right, since resistance is exponential in LP and the same 0.4 LP movement
+ * spans ~1.9 kOhm low in the range and ~28 kOhm high in it. It was also O(n) per sample. The
+ * resolver computes true continuous LP once, so none of that is needed.
+ */
+function calculateGaugePosition(sample: ParsedGsrSample): number {
+  return clamp(sample.lp, DISPLAY_MIN, DISPLAY_MAX);
 }
 
 function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
@@ -770,7 +715,7 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
 
   // Calculate the gauge position using baseline and resistance if available
   const gaugeValue = currentSample
-    ? calculateGaugePosition(currentSample, data.samples, data.hasBaseline, data.hasResistance)
+    ? calculateGaugePosition(currentSample)
     : currentValue;
 
   const displayValue = clamp(gaugeValue, gaugeMin, gaugeMax);
@@ -1073,12 +1018,13 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
               <span className="metric-value">{currentSample.resistance.toFixed(2)} kΩ</span>
             </div>
           )}
-          {data.scalingFactor !== 1 && (
-            <div>
-              <span className="metric-label">Scale</span>
-              <span className="metric-value">÷ {data.scalingFactor}</span>
-            </div>
-          )}
+          <div>
+            <span className="metric-label">Channel</span>
+            <span className="metric-value" title={data.notes.join("\n")}>
+              {data.sourceColumn}
+              {data.quantised ? " (0.05 steps)" : ""}
+            </span>
+          </div>
         </div>
       </div>
 

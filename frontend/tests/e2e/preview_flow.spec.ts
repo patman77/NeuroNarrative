@@ -94,3 +94,45 @@ test('page zoom: header control and Cmd/Ctrl shortcuts', async ({ page }) => {
   const zoom = await page.evaluate(() => document.documentElement.style.getPropertyValue('zoom'));
   expect(zoom).toBe('1');
 });
+
+// The golden fixture is real mindwalker export rows, and `backend/tests/test_conditioning.py`
+// asserts the *same* file resolves to strategy "data+baseline" with LP ~6.006 at t=0. Checking
+// it from the browser side too is what keeps the two parsers from drifting apart again: they
+// used to pick different columns from this exact schema (Baseline here, Resistance(kOhm) there).
+const MINDWALKER_CSV = path.resolve(__dirname, '../../../tests/fixtures/mindwalker_export.csv');
+
+test('channel resolution: a real mindwalker export uses the raw ADC channel', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  const inputs = page.locator('input[type="file"]');
+  await inputs.nth(0).setInputFiles(MINDWALKER_CSV);
+  await page.waitForTimeout(1200);
+  await inputs.nth(1).setInputFiles(WAV_PATH);
+  await page.waitForTimeout(400);
+
+  const previewBtn = page.getByRole('banner').getByRole('button', { name: 'Preview' });
+  await expect(previewBtn).toBeEnabled({ timeout: 5000 });
+  await previewBtn.click();
+  await page.waitForTimeout(800);
+
+  // Resolved from Data(16 bit), not the quantised Baseline column.
+  const channel = page.locator('.metric-label', { hasText: 'Channel' }).locator('..');
+  await expect(channel).toContainText('Data(16 bit)');
+  await expect(channel).not.toContainText('0.05 steps');
+
+  // The gauge reads a charge level near LP 6.0 — the value the backend's conditioning test
+  // asserts for the same fixture — rather than 213 (raw kΩ) or a divide-by-10 rescaling of it.
+  await expect(page.locator('.gauge-panel')).toBeVisible();
+  // `textContent`, not `innerText`: the reading is an SVG <text>, not an HTMLElement.
+  const reading = parseFloat(
+    ((await page.locator('text.gauge-value').textContent()) ?? '').replace(',', '.')
+  );
+  expect(reading).toBeGreaterThan(4.0);
+  expect(reading).toBeLessThanOrEqual(6.5);
+
+  // And the resistance metric still shows the device's own reading in kΩ, not a reconstruction.
+  await expect(page.locator('.metric-label', { hasText: 'Resistance' }).locator('..')).toContainText(
+    'kΩ'
+  );
+});

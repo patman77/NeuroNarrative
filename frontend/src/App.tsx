@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import { EventTimeline } from "./components/EventTimeline";
+import { PhenomenaPanel } from "./components/PhenomenaPanel";
 import { TranscriptTimeline } from "./components/TranscriptTimeline";
 import { RuleSelector } from "./components/RuleSelector";
 import { UploadPanel } from "./components/UploadPanel";
@@ -34,8 +35,52 @@ export interface SummarizedEvent {
   score?: number | null;
 }
 
+/** One MindWalking phenomenon. `kind` is the manual's own notation — see docs/mindwalking-domain.md. */
+export interface Phenomenon {
+  id: string;
+  kind: string;
+  t_start: number;
+  t_end: number;
+  amplitude_lp?: number | null;
+  amplitude_a?: number | null;
+  confidence: number;
+  stimulus_locked?: boolean | null;
+  utterance_id?: string | null;
+  detector: string;
+  evidence: Record<string, unknown>;
+}
+
+export interface SessionMetrics {
+  lpb: number;
+  lp_min: number;
+  lp_max: number;
+  lpd_mean: number;
+  lpd_track: Array<{ time_sec: number; lpd: number }>;
+  a_unit_lp: number;
+  a_unit_calibrated: boolean;
+  counts: Record<string, number>;
+  zone_min?: string | null;
+  zone_max?: string | null;
+  level_description: string;
+  unmasked_duration_sec: number;
+}
+
+export interface ProtocolSegment {
+  procedure: string;
+  label: string;
+  start: number;
+  end: number;
+  children: ProtocolSegment[];
+}
+
 export interface AnalysisResponse {
   events: SummarizedEvent[];
+  phenomena?: Phenomenon[];
+  session_metrics?: SessionMetrics;
+  calibration?: { a_unit_lp: number; a_unit_calibrated: boolean; lp_offset: number | null; zones_available: boolean };
+  artefacts?: { masked_fraction: number; spans: Array<{ start_sec: number; end_sec: number; reason: string }> };
+  protocol?: ProtocolSegment[];
+  channel?: { strategy: string; resolution_lp: number; quantised: boolean; notes: string[] };
   gsr_metadata: { sampling_rate_hz: number; duration_sec: number };
   audio_metadata: { sampling_rate_hz: number; duration_sec: number };
   transcript: TranscriptWord[];
@@ -501,6 +546,18 @@ function App() {
                 </div>
               </>
             )}
+          </section>
+        )}
+
+        {(analyzeMutation.data?.phenomena?.length ?? 0) > 0 && (
+          <section className="card">
+            <PhenomenaPanel
+              phenomena={analyzeMutation.data?.phenomena ?? []}
+              metrics={analyzeMutation.data?.session_metrics}
+              protocol={analyzeMutation.data?.protocol}
+              artefacts={analyzeMutation.data?.artefacts}
+              onSeek={(time) => { seekRequestRef.current?.(time); }}
+            />
           </section>
         )}
 
