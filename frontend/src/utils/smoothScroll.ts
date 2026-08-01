@@ -80,10 +80,20 @@ export function animateScroll(element: HTMLElement | null, target: ScrollTarget)
   };
 }
 
-/** Scroll `child` into the middle of its scrollable `container`, vertically. */
+/** Scroll `child` into the middle of its scrollable `container`, vertically.
+ *
+ * Measured with `getBoundingClientRect` rather than `offsetTop`. `offsetTop` is relative to the
+ * nearest *positioned* ancestor, and these lists are not positioned — so it returned an offset
+ * measured from somewhere further up the tree and the container scrolled to the wrong place
+ * entirely. The row was highlighted correctly the whole time; it just was not on screen, which
+ * looks identical to nothing being highlighted.
+ */
 export function scrollChildIntoView(container: HTMLElement | null, child: HTMLElement | null): Cancel {
   if (!container || !child) return () => undefined;
-  const target = child.offsetTop - container.clientHeight / 2 + child.offsetHeight / 2;
+  const containerRect = container.getBoundingClientRect();
+  const childRect = child.getBoundingClientRect();
+  const offsetWithinContainer = childRect.top - containerRect.top + container.scrollTop;
+  const target = offsetWithinContainer - container.clientHeight / 2 + childRect.height / 2;
   const clamped = Math.max(0, Math.min(target, container.scrollHeight - container.clientHeight));
   return animateScroll(container, { top: clamped });
 }

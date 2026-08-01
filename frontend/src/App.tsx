@@ -71,6 +71,10 @@ export type HoverSource = "plot" | "phenomena" | "narrative";
 export interface HoverTarget {
   timeSec: number;
   source: HoverSource;
+  /** End of the hovered span, when there is one. A narrative section covers minutes, so the
+      phenomenon "at" it is the first one inside it — not whichever happens to be nearest its
+      start, which is often nothing at all. */
+  endSec?: number;
 }
 
 /** A vertical marking in the timeline plots. */

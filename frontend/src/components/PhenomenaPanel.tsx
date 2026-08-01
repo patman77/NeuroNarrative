@@ -143,10 +143,21 @@ export function PhenomenaPanel({
   // Nearest visible row to an externally hovered moment.
   const highlightedId = useMemo(() => {
     if (!hover || hover.source === "phenomena") return null;
+    const candidates = phenomena.filter((p) => !hiddenKinds.has(p.kind));
+
+    // A hovered span (a narrative section) covers minutes: the row it refers to is the first one
+    // inside it. Nearest-to-the-start would usually find nothing, because a section begins on a
+    // spoken cue and phenomena cluster later.
+    if (hover.endSec != null) {
+      const inside = candidates
+        .filter((p) => p.t_start >= hover.timeSec && p.t_start < hover.endSec!)
+        .sort((a, b) => a.t_start - b.t_start);
+      return inside.length ? inside[0].id : null;
+    }
+
     let best: string | null = null;
     let bestDistance = Infinity;
-    for (const p of phenomena) {
-      if (hiddenKinds.has(p.kind)) continue;
+    for (const p of candidates) {
       const distance = Math.abs(p.t_start - hover.timeSec);
       if (distance < bestDistance) {
         bestDistance = distance;

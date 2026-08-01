@@ -190,6 +190,16 @@ Scrolling uses `utils/smoothScroll.ts`, not `scrollIntoView({behavior:"smooth"})
 the browser picks and grows with distance — across a 54-minute timeline that ran long enough for
 a second hover to arrive mid-flight. Ours eases in and out and is capped at 2 s.
 
+`scrollChildIntoView` measures with `getBoundingClientRect`, **not `offsetTop`**. `offsetTop` is
+relative to the nearest *positioned* ancestor and these lists are not positioned, so it produced
+an offset measured from further up the tree and the list scrolled somewhere else entirely. The
+row was highlighted the whole time — it just was not on screen, which is indistinguishable from
+nothing being highlighted.
+
+`HoverTarget` carries an optional `endSec`. A narrative section spans minutes, so the row it
+refers to is the **first phenomenon inside it**; nearest-to-the-section-start finds nothing,
+because sections begin on a spoken cue and phenomena cluster later.
+
 The detail chart's scroll container is **`.signal-chart`**, which carries `overflow-x: auto`, not
 the `detailWrapRef` wrapper around it. Scrolling the wrapper is a silent no-op.
 

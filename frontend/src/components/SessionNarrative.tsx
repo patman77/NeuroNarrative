@@ -101,7 +101,9 @@ export function SessionNarrative({ sections, markdown, hover, onHover, onSeek }:
                   ? "narrative-section narrative-section-active"
                   : "narrative-section"
               }
-              onMouseEnter={() => onHover({ timeSec: section.start_sec, source: "narrative" })}
+              onMouseEnter={() =>
+                onHover({ timeSec: section.start_sec, endSec: section.end_sec, source: "narrative" })
+              }
               onClick={onSeek ? () => onSeek(section.start_sec) : undefined}
             >
               <div className="narrative-heading">
