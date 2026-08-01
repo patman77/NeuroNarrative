@@ -1180,3 +1180,15 @@ details p {
   max-height: none;
   overflow: visible;
 }
+
+/* All / None sit with the kind chips but are not kinds, so they read as neutral rather than
+   carrying a phenomenon colour. */
+.kind-chip-bulk {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.kind-chip-bulk:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

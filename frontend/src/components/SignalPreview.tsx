@@ -485,7 +485,9 @@ function SignalChart({
   // toggling a chip removes its vertical markings here. Falls back to the legacy event list when
   // no analysis has produced phenomena yet.
   const visibleMarkers = useMemo<TimelineMarker[]>(() => {
-    const source: TimelineMarker[] = markers?.length
+    // `markers === undefined` means no catalogue; an empty array means everything is filtered
+    // out and nothing should be drawn.
+    const source: TimelineMarker[] = markers
       ? markers
       : (events ?? []).map((ev) => ({
           id: ev.event_id,
@@ -642,7 +644,9 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events, markers
   }, [duration, usableWidth, leftPadding]);
 
   const visibleMarkers = useMemo<TimelineMarker[]>(() => {
-    const source: TimelineMarker[] = markers?.length
+    // `markers === undefined` means no catalogue; an empty array means everything is filtered
+    // out and nothing should be drawn.
+    const source: TimelineMarker[] = markers
       ? markers
       : (events ?? []).map((ev) => ({
           id: ev.event_id,

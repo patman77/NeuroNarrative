@@ -31,6 +31,7 @@ interface Props {
   recordingId: string;
   hiddenKinds: Set<string>;
   onToggleKind: (kind: string) => void;
+  onSetHiddenKinds: (kinds: Set<string>) => void;
   hover: HoverTarget | null;
   onHover: (hover: HoverTarget | null) => void;
   phenomena: Phenomenon[];
@@ -70,6 +71,7 @@ export function PhenomenaPanel({
   artefacts,
   hiddenKinds,
   onToggleKind,
+  onSetHiddenKinds,
   hover,
   onHover,
   onSeek
@@ -166,6 +168,9 @@ export function PhenomenaPanel({
     [phenomena]
   );
 
+  const allShown = kinds.every((kind) => !hiddenKinds.has(kind));
+  const noneShown = kinds.every((kind) => hiddenKinds.has(kind));
+
   const visible = useMemo(() => {
     const filtered = phenomena.filter((p) => !hiddenKinds.has(p.kind));
     return order === "charge"
@@ -259,6 +264,27 @@ export function PhenomenaPanel({
 
       <div className="phenomena-controls">
         <div className="phenomena-filters">
+          {/* All / none, because clicking seven chips to isolate one kind is tedious — and the
+              chips drive the timeline markings too, so "none then one" is the usual way to look
+              at a single kind against the trace. */}
+          <button
+            type="button"
+            className="kind-chip kind-chip-bulk"
+            title="Show every kind"
+            disabled={allShown}
+            onClick={() => onSetHiddenKinds(new Set())}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className="kind-chip kind-chip-bulk"
+            title="Hide every kind"
+            disabled={noneShown}
+            onClick={() => onSetHiddenKinds(new Set(kinds))}
+          >
+            None
+          </button>
           {kinds.map((kind) => (
             <button
               key={kind}

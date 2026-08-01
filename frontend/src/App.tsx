@@ -496,9 +496,12 @@ function App() {
   const timelineEvents = useMemo(() => analyzeMutation.data?.events ?? [], [analyzeMutation.data]);
   const transcript = useMemo(() => analyzeMutation.data?.transcript ?? [], [analyzeMutation.data]);
 
-  const timelineMarkers = useMemo<TimelineMarker[]>(() => {
+  // `undefined` when there is no catalogue at all, so the charts can fall back to the legacy
+  // event list. An *empty array* means "every kind is filtered out" and must draw nothing —
+  // conflating the two made "None" fall through to the event markers instead of clearing them.
+  const timelineMarkers = useMemo<TimelineMarker[] | undefined>(() => {
     const phenomena = analyzeMutation.data?.phenomena ?? [];
-    if (!phenomena.length) return [];
+    if (!phenomena.length) return undefined;
     return phenomena
       .filter((p) => !hiddenKinds.has(p.kind))
       .map((p) => ({
@@ -701,6 +704,7 @@ function App() {
               artefacts={analyzeMutation.data?.artefacts}
               hiddenKinds={hiddenKinds}
               onToggleKind={toggleKind}
+              onSetHiddenKinds={setHiddenKinds}
               hover={hover}
               onHover={setHover}
               onSeek={handleSeek}
