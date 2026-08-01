@@ -69,8 +69,10 @@ Design docs written 2026-07-31 from the two source manuals (`Mindwalking_BK3_ebo
 | Stimulus-locked scoring, `X`, `KVZ` | ✅ | `detectors/stimulus.py` + `services/protocol.py`. Reference recording: 191 locked / 179 unlocked, 19 `X`, 30 `KVZ`. Unlocked lowers confidence, never filters — in solo it usually just means the operator was quiet |
 | Calibration (A-unit, solo offset) + artefact masking | ✅ | `calibration.py` + `detectors/artefact.py`. `lp_offset`/`a_unit_lp` optional on `/api/analyze`; **no zone is named without an offset**. Movement reported as `KB`, not silently masked. **No UI for the inputs yet** |
 | Stable phenomenon ids | ✅ | Content-derived hash in `phenomena/schema.py`; survives re-parse and sub-sample timing shifts |
-| Labelling mode + `Tag Number` ingestion | ❌ | **Hinge item**: unblocks all ML work. The device already exports a per-sample annotation channel and it is empty in every file |
-| BE-vs-KB and SN-vs-FN classifiers | ❌ | Needs the labelling path above |
+| Labelling mode + `Tag Number` ingestion | ✅ | `services/labels.py` + `/api/labels/*` + verdict buttons in `PhenomenaPanel.tsx`. Four verdicts (confirmed/rejected/reclassified/missed), content-hash recording identity, atomic writes under `user_data_path`. `Tag Number` read in `conditioning.py`. **No labels have been made yet** — the bottleneck is now effort, not tooling |
+| Evaluation harness | ✅ | `phenomena/evaluate.py` + `POST /api/labels/{id}/evaluate`. Per-kind precision/recall/F1, ±2 s onset tolerance, `has_recall_evidence` so recall is never claimed from confirmations alone |
+| Calibration inputs in the UI | ✅ | Solo offset and A-unit fields in `RuleSelector.tsx`; empty by default, and their absence is what suppresses charge-zone naming |
+| BE-vs-KB and SN-vs-FN classifiers | ❌ | Tooling ready; needs actual labels |
 | HSMM session states (Abflachung, ÜBZ, EE, zähe Sitzung) | ❌ | |
 | Deep learning | ❌ | Explicitly gated on ≥50 labelled sessions – see design §8 |
 

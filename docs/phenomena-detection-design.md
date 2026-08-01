@@ -590,13 +590,15 @@ implementation diverged from the plan and why.
 | 2 | **L1 primitives + `A`/`T`/`BE`/`LPA`/`LPD`/`LPB` rules** | ✅ `phenomena/primitives.py`, `detectors/{deflection,discharge,level}.py` |
 | 3 | **Stimulus locking + `X` + `KVZ`** | ✅ `protocol.py`, `detectors/stimulus.py` |
 | 4 | **Calibration + artefact masking + honest zone reporting** | ✅ `calibration.py`, `detectors/artefact.py` |
-| 5 | **Stable ids + labelling mode + `Tag Number` ingestion** | ◻ ids done (`schema.py`); labelling UI and tag ingestion not started |
-| 6 | **Evaluation harness + weak supervision + BE-vs-KB and SN-vs-FN classifiers** | ◻ |
+| 5 | **Stable ids + labelling mode + `Tag Number` ingestion** | ✅ `services/labels.py`, `/api/labels/*`, verdict buttons in `PhenomenaPanel.tsx`, tags read in `conditioning.py` |
+| 6 | **Evaluation harness** | ✅ `phenomena/evaluate.py` + `POST /api/labels/{id}/evaluate`. **Weak supervision and the BE-vs-KB / SN-vs-FN classifiers are not started** — they need labels to exist first, and none have been made yet |
 | 7 | **HSMM session states: Abflachung, ÜBZ, EE, zähe Sitzung** | ◻ |
 | 8 | **DL, if and only if §8's preconditions are met** | ◻ gated |
 
-Stage 5 remains the hinge: everything past it is blocked on labelled data that does not exist,
-and the cheapest way to create it is to make the app itself the annotation tool.
+Stage 5 is built, which moves the bottleneck from *tooling* to *effort*: the app can now record
+verdicts, but no verdicts have been recorded. Until some are, every accuracy number in §13 is
+still a count rather than a measurement. Reviewing even the 34 BEs on the reference recording
+would give the first real precision figure the project has ever had.
 
 ---
 
@@ -657,6 +659,40 @@ mapping for no measured benefit. Signals stay in LP rather than being negated to
 polarity (§3.1); the flip only matters when adopting a published decomposition, which is still
 deferred. Diarisation (§5) was dropped entirely — the corpus is solo, one voice, so there is
 nothing to separate and cue matching carries the role signal by itself.
+
+---
+
+## 12a. Labelling and evaluation, as built
+
+**Recording identity is a content hash** of the GSR export, not a filename. The same recording is
+copied and re-staged into the upload cache under a fresh name every time it is analysed, and a
+label set that did not survive that would be worthless.
+
+**Four verdicts**, because two are not enough to measure both halves:
+
+| verdict | meaning | scores as |
+|---|---|---|
+| `confirmed` | the detection is real | true positive for its kind |
+| `rejected` | it is not | false positive for its kind |
+| `reclassified` | real, but a different kind | false positive for the claimed kind *and* a false negative for the actual one |
+| `missed` | something real the detector never proposed | false negative for its kind |
+
+`missed` is the one that matters most and the easiest to leave out. Without it recall is 1.0 by
+construction, so `Evaluation.has_recall_evidence` is reported alongside every result and the
+report says so in plain words when it is false.
+
+**An unreviewed detection is unknown, not wrong.** It counts toward `unlabelled` and toward
+nothing else. Treating unreviewed detections as false positives would make precision a function
+of how tired the operator was.
+
+**Matching tolerance is ±2 s** by default. The SCR literature conventionally uses ±1 s; the extra
+second covers ASR timing slop and the 0.5 s smoothing window, and it is a request parameter so it
+can be tightened once there is enough data to see whether it matters.
+
+**Device tags are ingested.** `Tag Number` exists in every export and is empty in all of them.
+`conditioning.py` reads it, collapsing consecutive identical values, and surfaces the marks on the
+analysis result. If the operator starts tagging during a session, ground truth arrives for free
+with every future recording.
 
 ---
 

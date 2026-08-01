@@ -75,6 +75,7 @@ class Phenomenon(BaseModel):
 
 
 class AnalysisResponse(BaseModel):
+    recording_id: str = ""
     events: list[SummarizedEvent]
     phenomena: list[Phenomenon] = Field(default_factory=list)
     session_metrics: dict = Field(default_factory=dict)
@@ -103,3 +104,26 @@ class AnalysisJobStatus(BaseModel):
     progress: float = 0.0
     result: AnalysisResponse | None = None
     error: str | None = None
+
+
+class LabelRequest(BaseModel):
+    phenomenon_id: str = Field(default="", description="Empty only for a 'missed' verdict")
+    verdict: Literal["confirmed", "rejected", "reclassified", "missed"]
+    kind: str | None = Field(default=None, description="Required for 'reclassified' and 'missed'")
+    t_start: float | None = Field(default=None, description="Required for 'missed'")
+    note: str = ""
+
+
+class LabelListResponse(BaseModel):
+    recording_id: str
+    labels: list[dict] = Field(default_factory=list)
+    summary: dict = Field(default_factory=dict)
+
+
+class EvaluateRequest(BaseModel):
+    phenomena: list[dict] = Field(default_factory=list)
+    tolerance_sec: float = Field(
+        default=2.0,
+        description="Onset match window. The SCR literature uses ±1 s; ±2 s allows for ASR "
+        "timing slop and the 0.5 s smoothing window.",
+    )

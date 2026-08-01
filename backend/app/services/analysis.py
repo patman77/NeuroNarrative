@@ -20,6 +20,7 @@ from ..core.config import Settings
 from .asr import transcribe
 from .events import detect_events
 from .phenomena.conditioning import ChannelResolution, ChannelResolutionError, conditioned_frame
+from .labels import recording_id
 from .phenomena.fusion import detect_phenomena
 from .summary import summarize_with_local_llm
 from .protocol import parse_session, segment_turns
@@ -114,6 +115,9 @@ async def run_analysis(
     )
 
     return {
+        # Content hash, so labels made against this recording survive it being re-staged into
+        # the upload cache under a fresh name.
+        "recording_id": recording_id(csv_path),
         "events": event_payloads,
         "phenomena": phenomena.as_dict()["phenomena"],
         "session_metrics": phenomena.as_dict()["metrics"],
@@ -126,6 +130,9 @@ async def run_analysis(
             "quantised": channel_resolution.quantised,
             "source_columns": channel_resolution.source_columns,
             "notes": channel_resolution.notes,
+            "tags": [
+                {"time_sec": time, "tag": tag} for time, tag in channel_resolution.tags
+            ],
         },
         "gsr_metadata": gsr_metadata.model_dump(),
         "audio_metadata": audio_metadata.model_dump(),

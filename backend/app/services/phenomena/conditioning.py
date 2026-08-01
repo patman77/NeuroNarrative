@@ -61,6 +61,13 @@ class ChannelResolution:
     staircase; ~1e-4 means the raw ADC channel."""
     source_columns: dict[str, str]
     notes: list[str] = field(default_factory=list)
+    tags: list[tuple[float, str]] = field(default_factory=list)
+    """(time_sec, tag) from the device's own `Tag Number` column.
+
+    The mindwalker exports a per-sample annotation channel and it is empty in every recording we
+    have. It is the cheapest possible source of ground truth — the operator can mark a moment
+    during the session itself — so it is read here and carried through to the label store rather
+    than being discarded with the rest of the unrecognised columns."""
     measured_resistance_kohm: np.ndarray | None = None
     """The device's own resistance column, when the export has one. Preferred over reconstructing
     it from LP: the nominal calibration is an average across recordings and is ~0.3 LP off on any
@@ -76,6 +83,29 @@ class ChannelResolution:
         if self.measured_resistance_kohm is not None:
             return self.measured_resistance_kohm
         return np.exp(NOMINAL_LN_R_SLOPE * self.lp + NOMINAL_LN_R_INTERCEPT)
+
+
+def _read_tags(df: pd.DataFrame, columns: Sequence[str], time_sec: np.ndarray) -> list[tuple[float, str]]:
+    """Non-empty entries of the device's `Tag Number` column, as (time, tag) pairs.
+
+    Consecutive identical tags are collapsed: the column is written per sample, so a tag held
+    for two seconds at 50 Hz would otherwise arrive as a hundred separate marks.
+    """
+    column = _find_column(columns, "tag")
+    if column is None:
+        return []
+
+    values = df[column].astype(str).str.strip()
+    tags: list[tuple[float, str]] = []
+    previous = ""
+    for index, value in enumerate(values):
+        if value in ("", "nan", "None"):
+            previous = ""
+            continue
+        if value != previous and index < time_sec.size:
+            tags.append((float(time_sec[index]), value))
+        previous = value
+    return tags
 
 
 def _find_column(columns: Sequence[str], *needles: str) -> str | None:
@@ -166,7 +196,10 @@ def resolve_lp(df: pd.DataFrame) -> ChannelResolution:
 
     baseline = numeric(baseline_column) if baseline_column else None
     measured_resistance = numeric(resistance_column) if resistance_column else None
+    tags = _read_tags(df, columns, time_sec)
     notes: list[str] = []
+    if tags:
+        notes.append(f"{len(tags)} device tag(s) found")
 
     # --- 1. raw ADC anchored on the baseline staircase -------------------------------------
     if data_column is not None and baseline is not None:
@@ -193,6 +226,7 @@ def resolve_lp(df: pd.DataFrame) -> ChannelResolution:
                     source_columns={"time": time_column, "data": data_column, "baseline": baseline_column},
                     notes=notes,
                     measured_resistance_kohm=measured_resistance,
+                    tags=tags,
                 )
             notes.append(
                 f"ignored {data_column!r}: fit against {baseline_column!r} is off by "
@@ -247,6 +281,7 @@ def resolve_lp(df: pd.DataFrame) -> ChannelResolution:
             source_columns=source,
             notes=notes,
             measured_resistance_kohm=measured_resistance,
+            tags=tags,
         )
 
     # --- 5. the baseline staircase on its own ----------------------------------------------

@@ -94,6 +94,18 @@ PHENOMENA="$(printf '%s' "$RESULT" | grep -o '"kind"' | wc -l | tr -d ' ')"
 [[ "$PHENOMENA" -gt 0 ]] || fail "phenomena list is empty — the detector produced nothing"
 echo "    phenomena detected: $PHENOMENA"
 
+echo "==> labels"
+# The label store writes to user_data_path and is reached only through new routes, so a
+# frozen bundle could pass every other check with annotation entirely broken.
+REC="$(printf '%s' "$RESULT" | sed 's/.*"recording_id":"\([^"]*\)".*/\1/')"
+[[ -n "$REC" && "$REC" != "$RESULT" ]] || fail "analyze returned no recording_id"
+FIRST_ID="$(printf '%s' "$RESULT" | sed 's/.*"phenomena":\[{"id":"\([^"]*\)".*/\1/')"
+curl -fsS -X PUT "$URL/api/labels/$REC" -H 'Content-Type: application/json' \
+  -d "{\"phenomenon_id\":\"$FIRST_ID\",\"verdict\":\"confirmed\"}" >/dev/null || fail "label write"
+curl -fsS "$URL/api/labels/$REC" | grep -q '"confirmed"' || fail "label did not persist"
+curl -fsS -X DELETE "$URL/api/labels/$REC/$FIRST_ID" >/dev/null || fail "label delete"
+echo "    label round trip ok (recording $REC)"
+
 echo "==> path confinement"
 CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/analyze" \
   -H 'Content-Type: application/json' -d '{"csv_path":"/etc/passwd","wav_path":"/etc/hosts"}')"

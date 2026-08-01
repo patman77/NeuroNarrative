@@ -9,10 +9,15 @@ from fastapi.responses import JSONResponse
 from ..core.config import Settings, get_settings
 from ..services.analysis import run_analysis
 from ..services.jobs import store
+from ..services.labels import Label, LabelStore, missed_id, training_rows
+from ..services.phenomena.evaluate import evaluate
 from ..services.storage import prune_old_uploads, save_temp_upload
 from ..utils.cpu import asr_thread_count, detect_cpu
 from ..utils.hardware import gpu_is_available
 from .schemas import (
+    EvaluateRequest,
+    LabelListResponse,
+    LabelRequest,
     AnalysisJobCreated,
     AnalysisJobStatus,
     AnalysisRequest,
@@ -138,3 +143,92 @@ async def summarize_text(
 
     summary = await summarize_with_local_llm(text=text, settings=settings)
     return JSONResponse(content={"summary": summary, "id": uuid.uuid4().hex})
+
+
+# ---------------------------------------------------------------------------
+# Labels
+#
+# The hinge for everything past stage 4 of docs/phenomena-detection-design.md: there is no
+# ground truth for this corpus, so precision and recall are unmeasurable until the operator
+# marks some. Labels key on the content-derived `Phenomenon.id` and survive re-analysis.
+# ---------------------------------------------------------------------------
+
+
+def _label_store(settings: Settings = Depends(get_settings)) -> LabelStore:
+    return LabelStore(settings.label_dir)
+
+
+@router.get("/labels/{recording_id}", response_model=LabelListResponse)
+async def list_labels(
+    recording_id: str, store: LabelStore = Depends(_label_store)
+) -> LabelListResponse:
+    return LabelListResponse(
+        recording_id=recording_id,
+        labels=[label.as_dict() for label in store.load(recording_id)],
+        summary=store.summary(recording_id),
+    )
+
+
+@router.put("/labels/{recording_id}", response_model=LabelListResponse)
+async def upsert_label(
+    recording_id: str,
+    payload: LabelRequest,
+    store: LabelStore = Depends(_label_store),
+) -> LabelListResponse:
+    if payload.verdict in ("reclassified", "missed") and not payload.kind:
+        raise HTTPException(status_code=400, detail=f"{payload.verdict} needs a kind")
+    if payload.verdict == "missed" and payload.t_start is None:
+        raise HTTPException(status_code=400, detail="a missed phenomenon needs t_start")
+
+    phenomenon_id = payload.phenomenon_id
+    if payload.verdict == "missed" and not phenomenon_id:
+        # No detection to key on, so derive a stable id from the time and kind instead.
+        phenomenon_id = missed_id(payload.t_start or 0.0, payload.kind or "A")
+    if not phenomenon_id:
+        raise HTTPException(status_code=400, detail="phenomenon_id is required")
+
+    label = Label(
+        phenomenon_id=phenomenon_id,
+        verdict=payload.verdict,
+        kind=payload.kind,
+        t_start=payload.t_start,
+        note=payload.note,
+    )
+    labels = store.upsert(recording_id, label)
+    return LabelListResponse(
+        recording_id=recording_id,
+        labels=[l.as_dict() for l in labels],
+        summary=store.summary(recording_id),
+    )
+
+
+@router.delete("/labels/{recording_id}/{phenomenon_id}", response_model=LabelListResponse)
+async def delete_label(
+    recording_id: str, phenomenon_id: str, store: LabelStore = Depends(_label_store)
+) -> LabelListResponse:
+    labels = store.delete(recording_id, phenomenon_id)
+    return LabelListResponse(
+        recording_id=recording_id,
+        labels=[l.as_dict() for l in labels],
+        summary=store.summary(recording_id),
+    )
+
+
+@router.post("/labels/{recording_id}/evaluate", response_model=dict)
+async def evaluate_labels(
+    recording_id: str,
+    payload: EvaluateRequest,
+    store: LabelStore = Depends(_label_store),
+) -> dict:
+    """Precision and recall per kind, from whatever labels exist so far.
+
+    The detections are posted back rather than recomputed: re-running detection here would
+    re-read the recording for no benefit, and the client already has the exact result its
+    labels were made against.
+    """
+    labels = store.load(recording_id)
+    scores = evaluate(payload.phenomena, labels, tolerance_sec=payload.tolerance_sec)
+    return {
+        "evaluation": scores.as_dict(),
+        "training_rows": training_rows(labels, payload.phenomena),
+    }

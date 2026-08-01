@@ -74,13 +74,20 @@ export interface ProtocolSegment {
 }
 
 export interface AnalysisResponse {
+  recording_id?: string;
   events: SummarizedEvent[];
   phenomena?: Phenomenon[];
   session_metrics?: SessionMetrics;
   calibration?: { a_unit_lp: number; a_unit_calibrated: boolean; lp_offset: number | null; zones_available: boolean };
   artefacts?: { masked_fraction: number; spans: Array<{ start_sec: number; end_sec: number; reason: string }> };
   protocol?: ProtocolSegment[];
-  channel?: { strategy: string; resolution_lp: number; quantised: boolean; notes: string[] };
+  channel?: {
+    strategy: string;
+    resolution_lp: number;
+    quantised: boolean;
+    notes: string[];
+    tags?: Array<{ time_sec: number; tag: string }>;
+  };
   gsr_metadata: { sampling_rate_hz: number; duration_sec: number };
   audio_metadata: { sampling_rate_hz: number; duration_sec: number };
   transcript: TranscriptWord[];
@@ -188,6 +195,11 @@ function App() {
   const [ruleset, setRuleset] = useState<string>("default");
   const [preWindow, setPreWindow] = useState<number>(5);
   const [postWindow, setPostWindow] = useState<number>(7);
+  // The operator's own calibration numbers. Both optional, and their absence is meaningful:
+  // without lpOffset no charge zone is named at all, because a solo electrode reads a whole
+  // session as Kampfzone. See docs/phenomena-detection-design.md §4.
+  const [lpOffset, setLpOffset] = useState<string>("");
+  const [aUnitLp, setAUnitLp] = useState<string>("");
   const [previewVisible, setPreviewVisible] = useState<boolean>(false);
   const [hasPreviewed, setHasPreviewed] = useState<boolean>(false);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -355,7 +367,9 @@ function App() {
         wav_path,
         ruleset_name: ruleset,
         pre_event_window_sec: preWindow,
-        post_event_window_sec: postWindow
+        post_event_window_sec: postWindow,
+        lp_offset: lpOffset.trim() === "" ? null : Number(lpOffset),
+        a_unit_lp: aUnitLp.trim() === "" ? null : Number(aUnitLp)
       };
 
       // Analysis runs as a background job: transcribing a long recording takes minutes,
@@ -510,6 +524,10 @@ function App() {
           <RuleSelector
             ruleset={ruleset}
             onRulesetChange={setRuleset}
+            lpOffset={lpOffset}
+            aUnitLp={aUnitLp}
+            onLpOffsetChange={setLpOffset}
+            onAUnitLpChange={setAUnitLp}
             preWindow={preWindow}
             postWindow={postWindow}
             onPreWindowChange={setPreWindow}
@@ -552,6 +570,7 @@ function App() {
         {(analyzeMutation.data?.phenomena?.length ?? 0) > 0 && (
           <section className="card">
             <PhenomenaPanel
+              recordingId={analyzeMutation.data?.recording_id ?? ""}
               phenomena={analyzeMutation.data?.phenomena ?? []}
               metrics={analyzeMutation.data?.session_metrics}
               protocol={analyzeMutation.data?.protocol}

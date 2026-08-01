@@ -864,7 +864,7 @@ details p {
 
 .phenomenon-row {
   display: grid;
-  grid-template-columns: 3.5rem 3rem 12rem 1fr auto auto;
+  grid-template-columns: 3.5rem 3rem 11rem 1fr auto auto auto;
   align-items: center;
   gap: 0.6rem;
   padding: 0.3rem 0.25rem;
@@ -911,3 +911,25 @@ details p {
   border-radius: 3px;
   padding: 0 0.3rem;
 }
+
+.phenomenon-verdict { display: inline-flex; gap: 0.25rem; }
+
+.verdict-button {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  border-radius: 3px;
+  width: 1.6rem;
+  height: 1.4rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.verdict-yes { background: #166534; border-color: #16a34a; color: #dcfce7; }
+.verdict-no { background: #7f1d1d; border-color: #dc2626; color: #fee2e2; }
+
+.calibration-fields { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.calibration-fields label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.25rem; }
+.calibration-fields input { width: 8rem; }

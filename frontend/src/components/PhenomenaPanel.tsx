@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import type { Phenomenon, ProtocolSegment, SessionMetrics } from "../App";
+import { logEvent } from "../utils/logger";
 
 /**
  * The MindWalking phenomenon catalogue for a session.
@@ -13,7 +15,18 @@ import type { Phenomenon, ProtocolSegment, SessionMetrics } from "../App";
  *   without it the panel says so rather than showing a confident "3A".
  */
 
+type Verdict = "confirmed" | "rejected" | "reclassified" | "missed";
+
+interface StoredLabel {
+  phenomenon_id: string;
+  verdict: Verdict;
+  kind?: string | null;
+  t_start?: number | null;
+  note?: string;
+}
+
 interface Props {
+  recordingId: string;
   phenomena: Phenomenon[];
   metrics?: SessionMetrics;
   protocol?: ProtocolSegment[];
@@ -55,9 +68,69 @@ function chargeRank(p: Phenomenon): number {
   return (p.kind === "T" ? 0.25 : 1) * Math.abs(magnitude);
 }
 
-export function PhenomenaPanel({ phenomena, metrics, protocol, artefacts, onSeek }: Props) {
+export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, artefacts, onSeek }: Props) {
   const [order, setOrder] = useState<"charge" | "time">("charge");
   const [hidden, setHidden] = useState<Set<string>>(new Set(["T"]));
+  const [labels, setLabels] = useState<Record<string, Verdict>>({});
+  const [labelError, setLabelError] = useState<string | null>(null);
+
+  // Labels are the whole point of this panel: nothing past stage 4 of the detection design can
+  // be measured without them, so reviewing has to be one click and has to persist.
+  useEffect(() => {
+    if (!recordingId) return;
+    let cancelled = false;
+    axios
+      .get<{ labels: StoredLabel[] }>(`/api/labels/${recordingId}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const next: Record<string, Verdict> = {};
+        for (const label of data.labels) next[label.phenomenon_id] = label.verdict;
+        setLabels(next);
+      })
+      .catch((error) => {
+        if (!cancelled) logEvent("labels.load-failed", { error: String(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recordingId]);
+
+  const setVerdict = useCallback(
+    async (phenomenonId: string, verdict: Verdict) => {
+      if (!recordingId) return;
+      const previous = labels[phenomenonId];
+      const clearing = previous === verdict;
+      // Optimistic: annotation is a rhythm, and waiting for a round trip per click breaks it.
+      setLabels((current) => {
+        const next = { ...current };
+        if (clearing) delete next[phenomenonId];
+        else next[phenomenonId] = verdict;
+        return next;
+      });
+      setLabelError(null);
+      try {
+        if (clearing) {
+          await axios.delete(`/api/labels/${recordingId}/${phenomenonId}`);
+        } else {
+          await axios.put(`/api/labels/${recordingId}`, {
+            phenomenon_id: phenomenonId,
+            verdict
+          });
+        }
+      } catch (error) {
+        // Put it back rather than leaving the UI claiming something was saved when it was not.
+        setLabels((current) => {
+          const next = { ...current };
+          if (previous) next[phenomenonId] = previous;
+          else delete next[phenomenonId];
+          return next;
+        });
+        setLabelError("Could not save that label — it has been reverted.");
+        logEvent("labels.save-failed", { error: String(error) });
+      }
+    },
+    [labels, recordingId]
+  );
 
   const kinds = useMemo(
     () => Array.from(new Set(phenomena.map((p) => p.kind))).sort(),
@@ -145,6 +218,16 @@ export function PhenomenaPanel({ phenomena, metrics, protocol, artefacts, onSeek
         </p>
       )}
 
+      {labelError && <p className="phenomena-caveat">{labelError}</p>}
+
+      {recordingId && (
+        <p className="section-description">
+          Reviewed <strong>{Object.keys(labels).length}</strong> of {phenomena.length}. Confirming
+          or rejecting a detection is what makes precision and recall measurable at all — nothing
+          here is validated against ground truth until you do.
+        </p>
+      )}
+
       <div className="phenomena-controls">
         <div className="phenomena-filters">
           {kinds.map((kind) => (
@@ -190,6 +273,28 @@ export function PhenomenaPanel({ phenomena, metrics, protocol, artefacts, onSeek
                   title="No utterance ended in the 1–6 s before this. In a solo session that usually just means you were working quietly, so it lowers confidence rather than excluding it."
                 >
                   unlocked
+                </span>
+              )}
+              {recordingId && (
+                <span className="phenomenon-verdict">
+                  <button
+                    type="button"
+                    className={labels[p.id] === "confirmed" ? "verdict-button verdict-yes" : "verdict-button"}
+                    aria-pressed={labels[p.id] === "confirmed"}
+                    title="This is real. Click again to clear."
+                    onClick={() => setVerdict(p.id, "confirmed")}
+                  >
+                    ✓
+                  </button>
+                  <button
+                    type="button"
+                    className={labels[p.id] === "rejected" ? "verdict-button verdict-no" : "verdict-button"}
+                    aria-pressed={labels[p.id] === "rejected"}
+                    title="This is not real. Click again to clear."
+                    onClick={() => setVerdict(p.id, "rejected")}
+                  >
+                    ✗
+                  </button>
                 </span>
               )}
             </li>

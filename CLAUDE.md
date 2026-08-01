@@ -21,6 +21,11 @@ A NeuroNarrative session is a **MindWalking** sitting: someone works through a s
 - **Stage 3**: `services/protocol.py` parses the BK3 grammar; `detectors/stimulus.py` locks phenomena to utterances and adds `X` and `KVZ`.
 - **Stage 4**: `calibration.py` and `detectors/artefact.py`. `lp_offset` and `a_unit_lp` are optional on `/api/analyze`; **without an offset no charge zone is named at all**, because a solo electrode reads a whole session as Kampfzone. Don't "fix" that by naming one anyway.
 
+- **Stage 5**: `services/labels.py` + `/api/labels/*`. Verdicts key on the content-derived `Phenomenon.id` and the recording on a content hash of the CSV, so labels survive re-analysis and re-staging. Writes are atomic — a truncated JSON file would destroy hours of annotation.
+- **Stage 6**: `phenomena/evaluate.py`. Per-kind precision/recall/F1. **Recall is never claimed from confirmations alone** — that would be 1.0 by construction — so `missed` labels are a first-class verdict and `has_recall_evidence` gates the claim. An unreviewed detection counts as unknown, not wrong.
+
+**No labels have been made yet**, so every number the app prints is still a count, not an accuracy. Don't quote them as accuracy.
+
 Rendered by `components/PhenomenaPanel.tsx`. The legacy `events` list and `EventTimeline` still exist alongside.
 
 Things in `phenomena/` and `protocol.py` that will bite if you edit them. `primitives.py` segments the signal with **hysteresis legs, not peak finding**: a Blitzentladung is by definition a fall that stays down, which has no local minimum, so `find_peaks` structurally could not see the catalogue's most important phenomenon. Legs also need both the stall timeout (two discharges separated by a plateau never reverse, so they merged into one) and the onset/peak trimming (a leg starts at the previous turning point, which made `rise_time_sec` the age of the recording — and rise time is the BE criterion, so getting it wrong silently disabled BE detection). All three were real bugs, each caught by an injection test in `tests/test_phenomena.py`.

@@ -1,11 +1,16 @@
 from functools import lru_cache
 from pathlib import Path
 
-from platformdirs import user_cache_path
+from platformdirs import user_cache_path, user_data_path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_DIRNAME = "neuronarrative"
+
+
+def _default_label_dir() -> Path:
+    """Labels are *user data*, not cache: they are hand-made and must survive a cache purge."""
+    return user_data_path(APP_DIRNAME) / "labels"
 
 
 def _default_upload_dir() -> Path:
@@ -29,6 +34,10 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"])
     max_event_duration: float = Field(default=30.0, description="Maximum window length in seconds around detected events")
 
+    label_dir: Path = Field(
+        default_factory=_default_label_dir,
+        description="Where hand-made phenomenon labels are stored, one JSON file per recording",
+    )
     upload_dir: Path = Field(
         default_factory=_default_upload_dir,
         description="Where uploaded CSV/WAV pairs are staged between /upload and /analyze",
