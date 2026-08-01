@@ -158,6 +158,20 @@ Affinity (`sched_getaffinity`) and cgroup v1/v2 quotas are honoured, so a 2-core
 
 Setting `NEURONARRATIVE_FRONTEND_DIST` mounts the built SPA at `/` through `SpaStaticFiles`, a `StaticFiles` subclass that falls back to `index.html` on 404 (plain `html=True` only covers directory indexes). API routes are registered *before* the mount, so they still win. This is the single-process mode desktop packaging will use — same origin, no proxy, no CORS.
 
+### Resizable panes
+
+`components/ResizablePane.tsx` wraps the detected-events list and the transcript. It uses the
+native CSS `resize` handle rather than a hand-rolled drag — one line, accessible, and it behaves
+like the rest of the OS. **`resize` is ignored unless `overflow` is not `visible`**, so the
+scrolling and the handle have to be on the same element; putting them on separate elements
+silently produces no handle.
+
+Heights persist per `storageKey` in localStorage, read back through a range guard so a corrupt
+entry cannot leave a pane unusable. The native handle fires no event, so a `ResizeObserver`
+records the height.
+
+Don't nest a second scroller inside a pane: the inner one traps the wheel and you get two bars.
+
 ### Cross-panel hover linking
 
 The plot, the phenomena list and the narrative are one linked view. `App.tsx` owns both pieces of

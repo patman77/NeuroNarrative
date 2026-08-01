@@ -1,3 +1,4 @@
+import { ResizablePane } from "./ResizablePane";
 import type { TranscriptWord } from "../App";
 
 interface TranscriptTimelineProps {
@@ -34,6 +35,7 @@ export function TranscriptTimeline({ transcript, onSeek }: TranscriptTimelinePro
   return (
     <div className="card">
       <h2>Transcript</h2>
+      <ResizablePane storageKey="transcript" defaultHeight={320}>
       <div className="transcript-timeline">
         {lines.map((lineWords, lineIdx) => (
           <div key={lineIdx} className="transcript-line">
@@ -54,6 +56,7 @@ export function TranscriptTimeline({ transcript, onSeek }: TranscriptTimelinePro
           </div>
         ))}
       </div>
+      </ResizablePane>
     </div>
   );
 }

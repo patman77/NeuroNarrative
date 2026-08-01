@@ -1151,3 +1151,32 @@ details p {
   background: #1e293b;
   box-shadow: inset 3px 0 0 #60a5fa;
 }
+
+/* --- Resizable panes ------------------------------------------------------- */
+
+/*
+  `resize` is ignored unless `overflow` is something other than `visible`, so the scrolling and
+  the drag handle have to be on the same element. `overscroll-behavior: contain` stops a scroll
+  that reaches the end of the pane from carrying on and scrolling the page.
+*/
+.resizable-pane {
+  overflow-y: auto;
+  overflow-x: hidden;
+  resize: vertical;
+  overscroll-behavior: contain;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+}
+
+/* Make the native handle visible against a dark card — by default it is nearly invisible. */
+.resizable-pane::-webkit-resizer {
+  background: linear-gradient(135deg, transparent 50%, #475569 50%);
+}
+
+.resizable-pane .timeline-list,
+.resizable-pane .transcript-timeline {
+  /* The pane scrolls; an inner scroller would trap the wheel and give two nested bars. */
+  max-height: none;
+  overflow: visible;
+}

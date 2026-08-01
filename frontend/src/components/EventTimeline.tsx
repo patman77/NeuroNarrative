@@ -1,3 +1,4 @@
+import { ResizablePane } from "./ResizablePane";
 import type { SummarizedEvent } from "../App";
 
 interface EventTimelineProps {
@@ -146,6 +147,7 @@ export function EventTimeline({
         </button>
       </div>
 
+      <ResizablePane storageKey="events" defaultHeight={420}>
       <ul className="timeline-list">
         {events.map((event) => (
           <li
@@ -204,6 +206,7 @@ export function EventTimeline({
           </li>
         ))}
       </ul>
+      </ResizablePane>
     </div>
   );
 }

@@ -228,3 +228,24 @@ test('clicking the overview chart moves the playback head', async ({ page }) => 
 // flushes the pending seek once `SignalPreview` publishes its seek function — is deliberately not
 // covered here. Exercising it needs phenomenon or event rows, which only exist after a real
 // backend analysis, and this suite runs against the dev server alone.
+
+test('detected events and transcript are scrollable, resizable panes', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  // Before an analysis both sections show empty states, so assert the mechanism instead: a pane
+  // must carry both a resize handle and its own scrolling, since CSS `resize` is ignored unless
+  // `overflow` is something other than `visible`.
+  const css = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.className = 'resizable-pane';
+    document.body.appendChild(probe);
+    const style = getComputedStyle(probe);
+    const result = { resize: style.resize, overflowY: style.overflowY };
+    probe.remove();
+    return result;
+  });
+
+  expect(css.resize).toBe('vertical');
+  expect(css.overflowY).toBe('auto');
+});
