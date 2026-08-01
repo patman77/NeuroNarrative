@@ -34,6 +34,11 @@ Stages 1–6 of the detection roadmap, plus the session narrative and the review
 | Session narrative — one section per protocol segment, real times and charge levels, markdown export | `services/narrative.py`, `SessionNarrative.tsx` |
 | Phenomena panel — ranked "Größte Ladung zuerst", kind filters with All/None, one-click verdicts | `PhenomenaPanel.tsx` |
 | Cross-panel linking — filters drive the timeline markings; hovering anywhere highlights and scrolls everywhere else | `App.tsx`, `utils/smoothScroll.ts` |
+
+All three hover directions are verified against a real analysis to mark exactly one target *and*
+to leave it inside the visible area of its list — the distinction matters, because an earlier
+version highlighted correctly while scrolling the row off screen, which looks identical to
+highlighting nothing.
 | Resizable, scrollable panes for detected events and the transcript | `ResizablePane.tsx` |
 
 ---

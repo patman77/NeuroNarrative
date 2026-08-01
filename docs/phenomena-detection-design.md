@@ -7,10 +7,13 @@ with accuracy and coverage as the ranking criteria.
 Read `mindwalking-domain.md` first; every phenomenon name and every constant quoted here comes
 from there.
 
-**Status (2026-08-01): stages 1-4 of the §11 roadmap are implemented.** Sections 1-10 are the
-design as originally reasoned through; §12 records where building it proved the design wrong, and
-§13 gives measured results on the reference recording. Where the two disagree, §12 is what the
-code does.
+**Status (2026-08-02): stages 1-6 of the §11 roadmap are implemented.** Sections 1-10 are the
+design as originally reasoned through; §12 records where building it proved the design wrong,
+§12a covers labelling and evaluation as built, and §13 gives measured results on the reference
+recording. Where the design and §12 disagree, §12 is what the code does.
+
+Stages 7 and 8 are blocked on the same thing: **no labels have been made**, so nothing here is
+validated. See `status.md`.
 
 ---
 
@@ -581,8 +584,9 @@ today by construction), and a runtime/RSS bound on a 60-minute 50 Hz input.
 ## 11. Roadmap
 
 Ordered by value per unit of risk. Each stage is independently shippable and independently
-verifiable. **Stages 1-4 are implemented** (2026-08-01); the "as built" notes record where the
-implementation diverged from the plan and why.
+verifiable. **Stages 1-6 are implemented** (2026-08-02); §12 records where the implementation
+diverged from the plan and why. Stages 7 and 8 are both blocked on labels, which have not been
+made — see `status.md`.
 
 | # | Stage | Status |
 |---|---|---|

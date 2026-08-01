@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NeuroNarrative is a local-first web app that aligns GSR (galvanic skin response) recordings with audio sessions, detects physiologically significant events, transcribes speech around them, and optionally summarises each event with a local LLM. FastAPI backend + React/Vite frontend. Everything runs on the user's machine.
 
-`TODO.md` is the authoritative feature-status list and carries the known-issues table. `docs/system-design.md` is aspirational, not a description of the code — don't treat it as spec; its "Where the implementation diverges" section at the top maps plan to reality. The markdown files were reconciled against the code on 2026-08-01; if you change behaviour, update `TODO.md` alongside it.
+`TODO.md` is the authoritative feature-status list and carries the known-issues table. `docs/system-design.md` is aspirational, not a description of the code — don't treat it as spec; its "Where the implementation diverges" section at the top maps plan to reality. The markdown files were reconciled against the code on 2026-08-02; if you change behaviour, update `TODO.md` alongside it.
 
 ## The method behind the recordings
 
