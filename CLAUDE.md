@@ -158,6 +158,28 @@ Affinity (`sched_getaffinity`) and cgroup v1/v2 quotas are honoured, so a 2-core
 
 Setting `NEURONARRATIVE_FRONTEND_DIST` mounts the built SPA at `/` through `SpaStaticFiles`, a `StaticFiles` subclass that falls back to `index.html` on 404 (plain `html=True` only covers directory indexes). API routes are registered *before* the mount, so they still win. This is the single-process mode desktop packaging will use — same origin, no proxy, no CORS.
 
+### The session narrative
+
+`services/narrative.py` builds the automatic Sitzungsbericht: one section per protocol segment,
+with a title, prose and highlights from the LLM. The load-bearing rule is that **the model never
+chooses a timestamp**. Section boundaries come from the BK3 cues actually spoken; charge levels
+come from the conditioned signal; phenomenon counts come from the detectors. A model asked to
+segment a transcript by theme produces plausible times that are minutes off, and a report whose
+headings disagree with the trace is worse than none — the operator seeks to them and finds nothing.
+
+The prompt forbids inventing times and the model mostly complies, but not always: a real run
+emitted "Die Sitzung endet um 4:07" for a section ending at 53:55. `strip_invented_times` drops
+any sentence containing a clock reference. Keep it — one wrong number discredits the correct
+headings around it.
+
+Without a transcript it falls back to fixed 5-minute windows, which are still real ranges rather
+than estimates. `summarize_section` in `summary.py` is separate from the one-sentence event
+summariser and asks for JSON.
+
+**Local gotcha:** if Docker is running it binds `*:8000` over IPv6, and `localhost` resolves to
+`::1` first — so `npm run dev` proxies to Docker instead of the backend and every analysis 500s.
+Use `VITE_PROXY_TARGET=http://127.0.0.1:8000`.
+
 ### Seeking, and the two-column results layout
 
 Phenomena (left) and detected events (right) sit in `.analysis-columns`, a 50/50 grid that

@@ -82,6 +82,8 @@ class AnalysisResponse(BaseModel):
     calibration: dict = Field(default_factory=dict)
     artefacts: dict = Field(default_factory=dict)
     protocol: list[dict] = Field(default_factory=list)
+    narrative: list[dict] = Field(default_factory=list)
+    narrative_markdown: str = ""
     channel: dict = Field(default_factory=dict)
     gsr_metadata: SignalMetadata
     audio_metadata: SignalMetadata

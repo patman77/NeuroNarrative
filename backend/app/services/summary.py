@@ -95,3 +95,75 @@ async def summarize_with_local_llm(
         first_line = result.splitlines()[0].strip().strip('"')
         words = first_line.split()
         return " ".join(words[:20]) if words else None
+
+
+SECTION_SYSTEM_PROMPT = """Du fasst einen Abschnitt einer Sitzung zusammen.
+- Arbeite AUSSCHLIESSLICH mit dem gegebenen Auszug.
+- Antworte in der SPRACHE DES AUSZUGS. Deutscher Auszug -> deutsche Antwort.
+- Erfinde KEINE Zeitangaben, Uhrzeiten oder Minutenwerte. Die Zeiten stehen bereits fest.
+- Erfinde keine Namen, Zahlen oder Ereignisse, die nicht im Auszug vorkommen.
+- Der Auszug ist ein Ausschnitt und kann mitten im Satz beginnen oder enden. Das ist normal.
+Gib JSON zurueck:
+{"title": "<max. 8 Woerter, beschreibt das Thema>",
+ "summary": "<2-4 Saetze, was in diesem Abschnitt geschieht>",
+ "highlights": ["<kurzer Stichpunkt>", "..."]}
+"highlights" darf leer sein. Wenn der Auszug keinen erkennbaren Inhalt hat, setze
+"title" auf "Ohne erkennbaren Inhalt" und "summary" auf "".
+"""
+
+
+async def summarize_section(
+    text: str,
+    settings: Settings,
+    resolved_model: str | None = None,
+    procedure: str | None = None,
+) -> dict[str, Any] | None:
+    """Summarise one narrative section: a title, a few sentences, and optional bullets.
+
+    Separate from `summarize_with_local_llm`, which is tuned to produce a single clause about a
+    single event. A section covers minutes of material and needs a heading and shape.
+
+    The prompt forbids inventing times. Section boundaries are decided by the protocol parse and
+    the signal, and a model that "helpfully" writes its own minute marks would produce a report
+    whose headings disagree with its own timestamps.
+    """
+    cleaned = text.strip()
+    if len(cleaned.split()) < settings.summary_min_words:
+        return None
+
+    context = f"Dieser Abschnitt gehoert zum Verfahren {procedure}.\n" if procedure else ""
+    payload: dict[str, Any] = {
+        "model": resolved_model or settings.ollama_model,
+        "system": SECTION_SYSTEM_PROMPT,
+        "prompt": (
+            f"{context}Auszug:\n\"\"\"\n{cleaned}\n\"\"\"\n"
+            "Antworte nur mit dem JSON-Objekt."
+        ),
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.2, "top_p": 0.9, "num_predict": 400},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=180) as client:
+            response = await client.post(settings.ollama_url, json=payload)
+            response.raise_for_status()
+            raw = response.json().get("response", "").strip()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Section summary unavailable (%s): %s", type(exc).__name__, exc)
+        return None
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Section summary was not JSON; dropping it rather than guessing")
+        return None
+    if not isinstance(parsed, dict):
+        return None
+
+    highlights = parsed.get("highlights")
+    return {
+        "title": str(parsed.get("title") or "").strip(),
+        "summary": str(parsed.get("summary") or "").strip(),
+        "highlights": [str(h).strip() for h in highlights] if isinstance(highlights, list) else [],
+    }

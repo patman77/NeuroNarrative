@@ -23,6 +23,7 @@ from .phenomena.conditioning import ChannelResolution, ChannelResolutionError, c
 from .labels import recording_id
 from .phenomena.fusion import detect_phenomena
 from .summary import summarize_with_local_llm
+from .narrative import build_narrative, to_markdown
 from .protocol import parse_session, segment_turns
 from .transcript import TranscribedWord, align_transcript, protocol_segment
 
@@ -103,7 +104,21 @@ async def run_analysis(
         utterances,
     )
 
-    report("summarising", 0.92)
+    report("summarising", 0.90)
+    # The session narrative: one section per protocol segment, with real timestamps from the
+    # cues and real charge levels from the signal. The model only writes prose inside boundaries
+    # it does not get to choose (docs/session-narrative-design.md §4.3).
+    narrative = await build_narrative(
+        utterances=utterances,
+        segments=session_tree,
+        phenomena=phenomena.as_dict()["phenomena"],
+        time_sec=gsr_df["time_sec"].to_numpy(),
+        lp=gsr_df["lp"].to_numpy(),
+        duration_sec=gsr_metadata.duration_sec,
+        settings=settings,
+    )
+
+    report("summarising", 0.94)
     event_payloads = await _summaries_for_events(
         events=events,
         timestamps=gsr_df["time_sec"].to_numpy(),
@@ -124,6 +139,8 @@ async def run_analysis(
         "calibration": phenomena.as_dict()["calibration"],
         "artefacts": phenomena.as_dict()["artefacts"],
         "protocol": [segment.as_dict() for segment in session_tree],
+        "narrative": [section.as_dict() for section in narrative],
+        "narrative_markdown": to_markdown(narrative),
         "channel": {
             "strategy": channel_resolution.strategy,
             "resolution_lp": channel_resolution.resolution_lp,

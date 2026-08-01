@@ -1060,3 +1060,85 @@ details p {
 }
 
 .reviewed-line { margin: 0.25rem 0; }
+
+/* --- Session narrative ----------------------------------------------------- */
+
+.narrative { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+
+.narrative-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  flex: 1 1 auto;
+  min-height: 14rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.narrative-section {
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid #1e293b;
+  cursor: pointer;
+}
+
+.narrative-section:hover { background: #172033; }
+
+.narrative-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.narrative-time {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.narrative-title { font-weight: 600; color: #e2e8f0; font-size: 0.92rem; }
+
+.narrative-procedure {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  border-radius: 3px;
+  padding: 0 0.3rem;
+}
+
+.narrative-summary {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.narrative-highlights {
+  margin: 0.25rem 0 0.35rem 1.1rem;
+  padding: 0;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.narrative-facts {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  color: #94a3b8;
+}
+
+.narrative-lp { font-variant-numeric: tabular-nums; }
+.narrative-lp-down { color: #4ade80; }
+
+.narrative-count {
+  border: 1px solid #334155;
+  border-radius: 3px;
+  padding: 0 0.3rem;
+}

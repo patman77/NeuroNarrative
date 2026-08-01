@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import { EventTimeline } from "./components/EventTimeline";
 import { PhenomenaPanel } from "./components/PhenomenaPanel";
+import { SessionNarrative } from "./components/SessionNarrative";
 import { TranscriptTimeline } from "./components/TranscriptTimeline";
 import { RuleSelector } from "./components/RuleSelector";
 import { UploadPanel } from "./components/UploadPanel";
@@ -65,6 +66,21 @@ export interface SessionMetrics {
   unmasked_duration_sec: number;
 }
 
+export interface NarrativeSection {
+  start_sec: number;
+  end_sec: number;
+  label: string;
+  procedure?: string | null;
+  title: string;
+  summary: string;
+  highlights: string[];
+  lp_start?: number | null;
+  lp_end?: number | null;
+  lp_delta?: number | null;
+  word_count: number;
+  phenomena_counts: Record<string, number>;
+}
+
 export interface ProtocolSegment {
   procedure: string;
   label: string;
@@ -81,6 +97,8 @@ export interface AnalysisResponse {
   calibration?: { a_unit_lp: number; a_unit_calibrated: boolean; lp_offset: number | null; zones_available: boolean };
   artefacts?: { masked_fraction: number; spans: Array<{ start_sec: number; end_sec: number; reason: string }> };
   protocol?: ProtocolSegment[];
+  narrative?: NarrativeSection[];
+  narrative_markdown?: string;
   channel?: {
     strategy: string;
     resolution_lp: number;
@@ -637,17 +655,28 @@ function App() {
             />
           </section>
 
+          {/* The narrative replaces the per-event one-liners here: a session reads as a
+              sequence of themed stretches, not as 350 isolated moments. The raw event list is
+              still below, where its exports and per-event detail live. */}
           <section className="card analysis-column">
-            <EventTimeline
-              events={timelineEvents}
-              isLoading={analyzeMutation.isPending}
-              audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
+            <SessionNarrative
+              sections={analyzeMutation.data?.narrative ?? []}
+              markdown={analyzeMutation.data?.narrative_markdown}
               onSeek={handleSeek}
-              summarizerEnabled={health?.summarizer_enabled ?? true}
-              summarizerStatus={health?.summarizer_status}
             />
           </section>
         </div>
+
+        <section className="card">
+          <EventTimeline
+            events={timelineEvents}
+            isLoading={analyzeMutation.isPending}
+            audioDuration={analyzeMutation.data?.audio_metadata.duration_sec}
+            onSeek={handleSeek}
+            summarizerEnabled={health?.summarizer_enabled ?? true}
+            summarizerStatus={health?.summarizer_status}
+          />
+        </section>
 
         <section className="card">
           <TranscriptTimeline transcript={transcript} onSeek={handleSeek} />
