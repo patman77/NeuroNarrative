@@ -4,7 +4,15 @@
 
 NeuroNarrative is an in-development, local-first web application that synchronises galvanic skin response (GSR) recordings with audio sessions to help surface physiologically significant moments in conversation. All data stays on your machine.
 
-**Status: early development – core pipeline working, several areas still incomplete (see [TODO.md](TODO.md)).**
+The recordings it is built for are **MindWalking** sittings: one person works through a scripted recall protocol while a *mindwalker* GSR device tracks their charge level. The app detects the phenomena that method names — Ausschlag, Blitzentladung, langsame Entladung and the rest — aligns them to what was said, and writes the session report the method requires by hand. See [docs/mindwalking-domain.md](docs/mindwalking-domain.md).
+
+**Status: in development.** The pipeline works end to end and the MindWalking phenomenon
+catalogue is detected, reviewed and reported. Nothing is yet validated against hand-made labels,
+so every figure the app prints is a count rather than a measured accuracy — see
+[docs/status.md](docs/status.md), which is explicit about what is unproven, and
+[TODO.md](TODO.md) for feature status.
+
+> The packaged desktop `.app` lags the browser build; rebuild with `./scripts/build_desktop.sh`.
 
 ---
 
@@ -14,7 +22,7 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 |------|--------|
 | GSR CSV upload & parsing (column auto-detect) | ✅ |
 | WAV audio upload with drag-and-drop | ✅ |
-| Session preview: semicircular resistance gauge | ✅ |
+| Session preview: semicircular charge-level (LP) gauge | ✅ |
 | Session preview: WaveSurfer.js waveform + playback | ✅ |
 | Session preview: full-recording overview chart (click-to-seek) | ✅ |
 | Session preview: zoomed detail chart | ✅ |
@@ -24,17 +32,26 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 | Configurable pre/post event context windows | ✅ |
 | Event markers overlaid on overview and detail charts | ✅ |
 | Event list with score, ΔkΩ, and jump-to buttons | ✅ |
+| MindWalking phenomenon catalogue (A, T, BE, LPA, X, KVZ, KB) | ✅ |
+| Analysis in the LP (charge level) domain, shared by both CSV parsers | ✅ |
+| BK3 protocol parsing: procedure/exercise tree from the spoken cues | ✅ |
+| Session narrative: time-segmented report with real timestamps, markdown export | ✅ |
+| Phenomenon labelling (confirm / reject / reclassify / missed) with persistence | ✅ |
+| Evaluation: per-kind precision, recall and F1 against labels | ✅ |
+| Two-column review layout, resizable scrollable panes, cross-panel hover linking | ✅ |
 | Audio transcription (`small` model, on-device, no ffmpeg, VAD, deterministic) | ✅ |
 | Transcript timeline with word-level click-to-seek | ✅ |
 | GPU acceleration, auto-detected (Apple Metal / NVIDIA CUDA / CPU) | ✅ |
 | LLM summarisation per event (Ollama, auto-detected, answers in the transcript's language) | ✅ |
 | Session export: CSV, JSON, SRT, PDF | ✅ |
 | Backend health status pill with auto-retry | ✅ |
-| Backend unit tests (pytest, 75 passing) | ✅ |
-| Frontend E2E tests (Playwright, 3 passing) | ✅ |
+| Backend unit tests (pytest, 198 passing) | ✅ |
+| Frontend E2E tests (Playwright, 11 passing) | ✅ |
 | ESLint config (TypeScript + React rules) | ✅ |
 | CI: GitHub Actions (frontend lint + typecheck + build, backend pytest) | ✅ |
-| Speaker diarisation | ❌ not started |
+| Speaker diarisation | ❌ deliberately not done — the corpus is solo, so there is nothing to separate; cue matching carries the role signal instead |
+| `SN` / `FN` needle-state detection | ❌ needs labelled examples |
+| Classifiers (BE vs KB, SN vs FN) | ❌ tooling ready, needs labels |
 | EEG ingestion | ❌ not started |
 | Desktop app: frozen macOS `.app` (PyInstaller), native window, offline-capable | ✅ |
 | Desktop app: Windows / Linux builds, code signing | ❌ not started |
@@ -49,9 +66,10 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 │   ├── app/
 │   │   ├── api/              # HTTP routes and request/response schemas
 │   │   ├── core/             # Settings (pydantic-settings)
-│   │   ├── services/         # Signal processing, event detection, transcription, summarisation
+│   │   ├── services/         # Signal processing, transcription, summarisation, narrative, labels
+│   │   │   └── phenomena/    # LP conditioning, primitives, detectors, calibration, evaluation
 │   │   └── utils/
-│   ├── tests/                # pytest suite (test_analysis.py, test_events.py)
+│   ├── tests/                # pytest suite
 │   └── pyproject.toml
 ├── docker/                   # Compose stack for local development
 │   ├── backend.Dockerfile
@@ -63,7 +81,7 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 │   ├── mindwalking-domain.md            # The MindWalking method: device, phenomena, session protocol
 │   ├── phenomena-detection-design.md    # Design + as-built: detecting A / T / BE / LPA / X / KVZ / KB
 │   ├── session-narrative-design.md      # Design: BK3 protocol parsing + summaries
-│   └── status-2026-08-01.md             # Current state: what is built, measured, and unproven
+│   └── status.md             # Current state: what is built, measured, and unproven
 ├── frontend/                 # React + Vite + TypeScript
 │   ├── src/
 │   │   ├── components/       # SignalPreview, EventTimeline, TranscriptTimeline, UploadPanel, RuleSelector
@@ -104,6 +122,10 @@ The API runs on <http://localhost:8000>. Key endpoints:
 | `POST` | `/api/upload` | Accept GSR CSV + WAV, stage them, return their paths |
 | `POST` | `/api/analyze` | Start an analysis; returns `202 {job_id}` immediately |
 | `GET` | `/api/analyze/{job_id}` | Poll status: `stage`, `progress` (0–1), and `result` when done |
+| `GET` | `/api/labels/{recording_id}` | Labels made against a recording |
+| `PUT` | `/api/labels/{recording_id}` | Record a verdict (confirmed / rejected / reclassified / missed) |
+| `DELETE` | `/api/labels/{recording_id}/{phenomenon_id}` | Clear one verdict |
+| `POST` | `/api/labels/{recording_id}/evaluate` | Per-kind precision, recall and F1 from the labels so far |
 
 Analysis is a **background job**, not a long request. Transcribing a 54-minute recording
 takes several minutes, and the desktop window enforces its own per-request timeout, so a
@@ -130,6 +152,7 @@ Useful environment variables (all prefixed `NEURONARRATIVE_`, or use `backend/.e
 | `ASR_MODEL_DIR` | per-user cache dir | Model download cache |
 | `SUMMARY_CONTEXT_SEC` | `45.0` | Fallback radius when the pre/post window holds too little speech to summarise; `0` disables. Sessions are mostly silent, so a 12 s window is empty for most events |
 | `SUMMARY_MIN_WORDS` | `4` | Excerpts shorter than this are not sent to the LLM |
+| `LABEL_DIR` | per-user data dir | Where hand-made phenomenon labels are stored (user data, not cache) |
 | `FRONTEND_DIST` | unset | When set, the backend serves the built SPA at `/` |
 
 ### Frontend
@@ -140,7 +163,9 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs on <http://localhost:5173> (or the next free port) and proxies `/api/*` to the backend. CORS is configured to accept any `localhost` port, so port conflicts are handled automatically. Set `VITE_PROXY_TARGET` if the backend is not on `http://localhost:8000`.
+The Vite dev server runs on <http://localhost:5173> (or the next free port) and proxies `/api/*` to the backend.
+
+> **If Docker is running**, it binds `*:8000` over IPv6 and `localhost` resolves to `::1` first, so the proxy reaches Docker instead of the backend and every analysis fails with a 500 and nothing in the backend log. Start the dev server with `VITE_PROXY_TARGET=http://127.0.0.1:8000`, or stop Docker. CORS is configured to accept any `localhost` port, so port conflicts are handled automatically. Set `VITE_PROXY_TARGET` if the backend is not on `http://localhost:8000`.
 
 Other frontend scripts: `npm run lint` (ESLint), `npm run typecheck` (`tsc --noEmit`), `npm run build`.
 
@@ -329,13 +354,13 @@ always `None`.
 ## Testing
 
 ```bash
-# Backend unit tests (10 tests)
+# Backend unit tests
 cd backend && pytest tests/ -v
 
 # Frontend static checks
 cd frontend && npm run lint && npm run typecheck
 
-# Frontend E2E (3 tests). playwright.config.ts pins baseURL to port 5175,
+# Frontend E2E. playwright.config.ts pins baseURL to port 5175,
 # so the dev server must listen there rather than on the default 5173.
 cd frontend
 npx playwright install chromium   # once, or after a @playwright/test upgrade
@@ -353,7 +378,7 @@ dev server and browser binaries, so run it locally when changing the preview UI.
 
 See [TODO.md](TODO.md) for the full breakdown. The most impactful gaps are:
 
-- **Speaker diarisation** — distinguish who is speaking around each event
+- **Label a session** — the tooling exists but no labels have been made, so no accuracy figure in this project is measured rather than counted
 - **Transcript timeline UX** — currently shows words but needs better visual design
 - **EEG support** — no ingestion pipeline yet
 - **Desktop packaging** — ship as a standalone app without requiring a terminal

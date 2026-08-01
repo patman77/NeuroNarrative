@@ -5,11 +5,15 @@ structure and the phenomenon set from `phenomena-detection-design.md` exist.
 
 Read `mindwalking-domain.md` §3 for the cue inventory this is built on.
 
-**Status (2026-08-01):** §2 (cue inventory, turn segmentation, function roles, the parse tree) and
-§3 (tree-bounded excerpt selection) are implemented in `services/protocol.py` and
-`services/transcript.py`. §4 (phenomenon-aware prompts, topic rollup, the automatic
-Sitzungsbericht) is **not** — summaries still use the single neutral prompt. See §6 for what
-building the parser taught us.
+**Status (2026-08-02).** Implemented: §2 (cue inventory, turn segmentation, function roles, the
+parse tree) in `services/protocol.py`; §3 (tree-bounded excerpt selection) in
+`services/transcript.py`; and **§4.3, the automatic Sitzungsbericht**, in `services/narrative.py`
+with `SessionNarrative.tsx` rendering it and a markdown export.
+
+Not implemented: §4.1 (per-phenomenon summary prompts — per-event summaries still use the single
+neutral prompt) and §4.2 (topic rollup ranked by total discharge).
+
+§6 records what building the parser taught us; §7 what building the report taught us.
 
 ---
 
@@ -309,3 +313,35 @@ being told to, which is weak but real evidence the matcher is finding the right 
 session rather than to the last spoken word. In a solo session speech is sparse, so an event
 minutes after an exercise's last utterance still belongs to it; bounding at the last word left
 exactly those events — the ones the fallback exists for — with no segment at all.
+
+
+---
+
+## 7. As built — the Sitzungsbericht
+
+`services/narrative.py`. One section per protocol segment, each with a title, a few sentences,
+highlights, the charge level at its boundaries and the phenomena inside it.
+
+**The model never chooses a timestamp.** Section boundaries come from the BK3 cues actually
+spoken; charge levels are read from the conditioned signal at those instants; counts come from
+the detectors. This was the design intent and it turned out to need enforcing rather than merely
+requesting: even instructed not to, a real run emitted *"Die Sitzung endet um 4:07"* for a section
+ending at 53:55. `strip_invented_times` drops any sentence carrying a clock reference — ages,
+counts and charge levels survive, since those are content. One invented number would discredit
+the eleven correct headings around it.
+
+Without a transcript it falls back to fixed five-minute windows. Those are still real ranges
+rather than estimates, which is the property that matters.
+
+Silence is reported as silence. In a solo session a quiet stretch is an observation, not a gap
+to apologise for.
+
+**On the reference recording:** 12 sections tiling 00:00–53:55 with no gaps or overlap, LP
+6.00 → 4.79. The content lines up with the operator's own hand-written summary of that session —
+the mixed-up key and the Pommes, the Alkohol discussion, the U-Boot with the Muttern, the
+Kirschessen, the Physikpraktikum, the closing Orientierungsübung — but with times derived from
+the cues rather than estimated, which is the whole point of the exercise.
+
+**Prose quality is bounded by the local model.** With qwen2.5:7b, two of twelve sections came
+back thin and it coins the occasional non-word. The structure, the times and the levels do not
+depend on it.

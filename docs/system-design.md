@@ -7,8 +7,11 @@
 
 ## Where the implementation diverges
 
-The sections below are the plan. As of 2026-07-31 the shipped code differs in ways worth
-knowing before you use this document as a reference:
+The sections below are the plan. As of 2026-08-02 the shipped code differs in ways worth
+knowing before you use this document as a reference. The largest divergence is one this document
+does not anticipate at all: the app is now built around the **MindWalking** method the recordings
+follow, detecting that method's named phenomena rather than generic "events". See
+`mindwalking-domain.md`, `phenomena-detection-design.md` and `status.md`.
 
 | Planned here | Actually built |
 | --- | --- |
@@ -16,11 +19,11 @@ knowing before you use this document as a reference:
 | Session/project persistence in SQLite or PostgreSQL | No database. `/api/upload` stages files in a per-user cache dir (`platformdirs`) and returns the paths; those are posted back to `/api/analyze`, confined to that directory. The server holds no session state. |
 | Dramatiq + Redis background workers | An in-process `JobStore` (`services/jobs.py`): `POST /api/analyze` returns `202 {job_id}` and the UI polls for stage and progress. Transcription runs on a dedicated thread; per-event summarisation uses `asyncio.gather`. No Redis anywhere. |
 | Plotly.js charts, Tailwind + shadcn/ui, Zustand | Hand-rolled SVG charts and gauge in `SignalPreview.tsx`, plain CSS in `styles.css`, state held in `App.tsx` with React Query for the analysis mutation. WaveSurfer.js **is** used, for the waveform. |
-| neurokit2 SCR peaks, tonic/phasic decomposition, Savitzky–Golay smoothing | Derivative z-score threshold unioned with `ruptures` PELT/RBF changepoints, plus a minimum-gap filter. No neurokit2 dependency, no smoothing stage. |
-| Filler-word removal, sentence segmentation, diarisation-ready transcript schema | Whisper `small` with word timestamps (MLX on Apple GPU, CTranslate2 elsewhere), VAD-windowed, sliced to each event's `[t−pre, t+post]` window. No segmentation, no diarisation. The only cleanup is `drop_hallucinated_tokens`, which removes non-words the model invents over room tone — not the planned filler-word removal. |
+| neurokit2 SCR peaks, tonic/phasic decomposition, Savitzky–Golay smoothing | Tonic/phasic **is** done, in `services/phenomena/primitives.py` — a Butterworth split plus hysteresis leg segmentation — but hand-rolled rather than via neurokit2, and on the LP (log-resistance) channel rather than raw kΩ. Detection emits the MindWalking catalogue (`A`, `T`, `BE`, `LPA`, `X`, `KVZ`, `KB`), not undifferentiated events. The legacy derivative + `ruptures` path still runs alongside for the `events` field. |
+| Filler-word removal, sentence segmentation, diarisation-ready transcript schema | Whisper `small` with word timestamps (MLX on Apple GPU, CTranslate2 elsewhere), VAD-windowed. Segmentation **is** done, but into BK3 protocol procedures and exercises (`services/protocol.py`), not sentences. Diarisation is deliberately absent: the corpus is solo, so cue matching carries the role signal. Cleanup is `drop_hallucinated_tokens`. |
 | Summary window is the configured `[t−pre, t+post]` slice | That slice is empty for most events in a real session (1589 words over 54 minutes), so `_context_words` widens the search to `summary_context_sec` when it holds fewer than `summary_min_words`, and falls back to the guided-recall protocol cues (`protocol_segment`: "Ruf … zurück" → "Danke") when even that is silent. Sparse recordings are the norm, not the exception. |
 | Ruff + Black + isort; Vitest unit tests; OpenTelemetry / Prometheus | ESLint + `tsc` on the frontend, pytest on the backend, Playwright for E2E. No Python linter configured, no Vitest, no telemetry. |
-| PDF report via WeasyPrint | Client-side `window.print()` with print-only CSS. CSV/JSON/SRT are client-side Blob downloads. |
+| PDF report via WeasyPrint | Client-side `window.print()` with print-only CSS. CSV/JSON/SRT are client-side Blob downloads. The session narrative additionally exports as Markdown — a Sitzungsbericht with times taken from the spoken cues and charge levels from the signal. |
 | Electron shell for the desktop app | PyInstaller bundle with a pywebview native window (system WKWebView) — one signable `.app`, no Chromium. See the P7 breakdown in TODO.md. |
 
 ---
