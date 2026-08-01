@@ -83,6 +83,17 @@ RESULT="$(analyze "$CSV" "$WAV")" || fail "analyze"
 printf '%s' "$RESULT" | grep -q '"events"' || fail "analyze returned no events key"
 echo "    events detected: $(printf '%s' "$RESULT" | grep -o '"event_id"' | wc -l | tr -d ' ')"
 
+# The phenomenon catalogue lives in services/phenomena/ and services/protocol.py, which are
+# imported lazily enough that a missing hiddenimport would not surface until analysis runs.
+# Asserting on the legacy events alone would let a frozen bundle pass with the whole
+# MindWalking layer silently dead.
+printf '%s' "$RESULT" | grep -q '"phenomena"' || fail "analyze returned no phenomena key"
+printf '%s' "$RESULT" | grep -q '"session_metrics"' || fail "analyze returned no session_metrics"
+printf '%s' "$RESULT" | grep -q '"channel"' || fail "analyze returned no channel resolution"
+PHENOMENA="$(printf '%s' "$RESULT" | grep -o '"kind"' | wc -l | tr -d ' ')"
+[[ "$PHENOMENA" -gt 0 ]] || fail "phenomena list is empty — the detector produced nothing"
+echo "    phenomena detected: $PHENOMENA"
+
 echo "==> path confinement"
 CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/analyze" \
   -H 'Content-Type: application/json' -d '{"csv_path":"/etc/passwd","wav_path":"/etc/hosts"}')"
