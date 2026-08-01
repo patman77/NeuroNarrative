@@ -22,9 +22,9 @@ def test_load_gsr_valid(tmp_path):
     csv = tmp_path / "gsr.csv"
     csv.write_text("Time,resistance\n0,10.5\n100,11.0\n200,10.8\n")
 
-    df = _load_gsr(csv)
+    df, _ = _load_gsr(csv)
 
-    assert list(df.columns) == ["time_sec", "resistance_kohm"]
+    assert list(df.columns) == ["time_sec", "lp", "resistance_kohm"]
     assert len(df) == 3
     # Time values are in milliseconds (max=200 > 1000 is False here, so kept as-is)
     assert df["time_sec"].iloc[0] == pytest.approx(0.0)
@@ -47,7 +47,7 @@ def test_load_gsr_time_in_milliseconds(tmp_path):
     csv = tmp_path / "ms.csv"
     csv.write_text(f"Time,resistance\n{rows}\n")
 
-    df = _load_gsr(csv)
+    df, _ = _load_gsr(csv)
 
     # max raw time = 19 * 100 = 1900 ms → divided by 1000 → 1.9 s
     assert df["time_sec"].max() == pytest.approx(1.9)
@@ -130,7 +130,7 @@ def test_long_recording_in_seconds_is_not_treated_as_milliseconds(tmp_path):
     csv = tmp_path / "long.csv"
     csv.write_text(f"Time,resistance\n{rows}\n")
 
-    df = _load_gsr(csv)
+    df, _ = _load_gsr(csv)
 
     assert df["time_sec"].max() == pytest.approx(1799.98, abs=0.1)
 
@@ -141,7 +141,7 @@ def test_milliseconds_still_detected_by_step_size(tmp_path):
     csv = tmp_path / "ms.csv"
     csv.write_text(f"Time,resistance\n{rows}\n")
 
-    df = _load_gsr(csv)
+    df, _ = _load_gsr(csv)
 
     assert df["time_sec"].max() == pytest.approx(4.9)
 
@@ -152,7 +152,7 @@ def test_millisecond_column_name_is_honoured(tmp_path):
     csv = tmp_path / "named.csv"
     csv.write_text(f"time_ms,resistance\n{rows}\n")
 
-    df = _load_gsr(csv)
+    df, _ = _load_gsr(csv)
 
     assert df["time_sec"].max() == pytest.approx(0.0045)
 
@@ -213,37 +213,53 @@ def _speech(text: str, start: float, step: float = 0.6):
 
 
 def test_context_falls_back_to_the_protocol_exercise():
-    """An event in a long silence still gets the exercise it sits in as context.
-
-    The opener "Ruf dir ein Erlebnis zurück" and the closing "Danke" bound the exercise;
-    the 45 s radius holds nothing, so the whole exercise becomes the excerpt.
-    """
+    """An event with no speech within 45 s still gets the exercise it belongs to."""
     from app.services.analysis import _context_words
 
     content = (
-        _speech("Ruf dir ein Erlebnis zurück als du ausgesperrt warst", 100.0)
-        + _speech("Ich stand vor der Tür ohne Schlüssel", 160.0)
+        _speech("Ruf dir ein Erlebnis zurueck als du ausgesperrt warst", 100.0)
+        + _speech("Ich stand vor der Tuer ohne Schluessel und es war kalt", 160.0)
     )
-    words = content + _speech("Danke", 400.0)
     settings = Settings(summary_context_sec=45.0, summary_min_words=4)
 
-    # Event at 300 s: >45 s from any speech, but inside the ruf-zurück…Danke exercise.
-    # The closing "Danke" is a cue, not content, and stays out of the excerpt.
-    selected = _context_words(words, 300.0, 5.0, 7.0, settings)
-    assert selected == content
+    selected = _context_words(content, 300.0, 5.0, 7.0, settings)
+
+    assert selected, "the protocol fallback should supply the exercise"
+    text = " ".join(w.text for w in selected)
+    assert "Schluessel" in text
+    # The scripted instruction is context, not content — the excerpt is what was recounted.
+    assert "Ruf" not in text
 
 
-def test_context_prefers_the_subsection_cue():
-    """"Beschreibe" opens a subchapter; an event inside it gets that scope, not the whole exercise."""
-    from app.services.analysis import _context_words
+def test_danke_does_not_close_an_exercise():
+    """Regression: "Danke" is nowhere in BK3 as an instruction.
 
-    exercise = _speech("Ruf dir ein Erlebnis zurück", 100.0)
-    detail = _speech("Beschreibe was du an der Tür gesehen hast genau", 200.0)
-    closing = _speech("Danke", 500.0)
-    settings = Settings(summary_context_sec=45.0, summary_min_words=4)
+    It is ordinary Bestaetigung, which the mw-Kurs calls the most important thing the session
+    leader does. Treating it as a boundary truncated exercises at arbitrary points.
+    """
+    from app.services.protocol import parse_session, segment_turns
 
-    # Event at 260 s: silence around it, inside the Beschreibe subsection.
-    assert _context_words(exercise + detail + closing, 260.0, 5.0, 7.0, settings) == detail
+    words = (
+        _speech("Ruf dir ein Erlebnis zurueck als du ausgesperrt warst", 10.0)
+        + _speech("Danke", 60.0)
+        + _speech("Ich stand vor der Tuer und es war sehr kalt draussen", 90.0)
+    )
+    utterances = segment_turns(words)
+    segments = parse_session(utterances, duration_sec=200.0)
+
+    assert segments
+    # The exercise must still be running after the "Danke".
+    assert segments[0].end > 90.0
+
+
+def test_solo_phrasing_opens_an_exercise():
+    """The mw-Kurs is explicit that the solist asks the memory store, not themselves."""
+    from app.services.protocol import Procedure, parse_session, segment_turns
+
+    words = _speech("Gibt es ein Geschehnis als ich mich ausgesperrt habe", 10.0)
+    segments = parse_session(segment_turns(words), duration_sec=100.0)
+
+    assert segments and segments[0].procedure is Procedure.FRR
 
 
 def test_context_without_cues_keeps_the_widened_window():
@@ -252,25 +268,22 @@ def test_context_without_cues_keeps_the_widened_window():
 
     words = _speech("nur normale Sprache ohne besondere Hinweise", 100.0)
     settings = Settings(summary_context_sec=45.0, summary_min_words=4)
+
     assert _context_words(words, 400.0, 5.0, 7.0, settings) == []
 
 
-def test_session_markers_match_ascii_umlaut_spelling_and_all_cues():
-    from app.services.transcript import find_session_markers
+def test_cue_matching_tolerates_asr_error():
+    """A dropped function word must not lose a cue; ASR on German is not exact."""
+    from app.services.protocol import match_cue
 
-    words = (
-        _speech("ruf zurueck", 10.0)
-        + _speech("was siehst du noch", 20.0)
-        + _speech("was ist am deutlichsten", 30.0)
-        + _speech("Danke,", 40.0)
-    )
-    kinds = [(m.kind, m.time) for m in find_session_markers(words)]
-    assert kinds == [("begin", 10.0), ("section", 20.0), ("section", 30.0), ("end", 40.0)]
+    assert match_cue(["ruf", "dir", "erlebnis", "zurueck"]) is not None
+    assert match_cue(["ruf", "mich", "spaeter", "bitte", "nochmal", "kurz", "an"]) is None
 
 
-def test_ruf_alone_is_not_an_opener():
-    """"ruf" without a nearby "zurück" (e.g. "ruf mich an") must not start an exercise."""
-    from app.services.transcript import find_session_markers
+def test_the_krr_opener_is_not_swallowed_by_the_frr_one():
+    """Longest match wins, or every Kettenrueckruf would be read as a Freier Rueckruf."""
+    from app.services.protocol import Procedure, match_cue
 
-    words = _speech("ruf mich später bitte einfach nochmal kurz an", 10.0)
-    assert find_session_markers(words) == []
+    cue = match_cue("ruf dir das frueheste erlebnis zurueck an das du dich erinnern kannst".split())
+
+    assert cue is not None and cue.procedure is Procedure.KRR

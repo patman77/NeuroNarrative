@@ -36,6 +36,22 @@ class AnalysisRequest(BaseModel):
     ruleset_name: str = Field(default="default")
     pre_event_window_sec: float = Field(default=5.0)
     post_event_window_sec: float = Field(default=7.0)
+    lp_offset: float | None = Field(
+        default=None,
+        description=(
+            "Solo-electrode offset in LP, subtracted before naming a charge zone. The solo "
+            "procedure has you measure it at every session start ('Dif.'). Without it no zone "
+            "is named at all, because a single-hand electrode reads an entire session as "
+            "Kampfzone."
+        ),
+    )
+    a_unit_lp: float | None = Field(
+        default=None,
+        description=(
+            "Size of one scale division (1A) in LP, from the Dosendruck calibration. Without it "
+            "a fallback scale is used and every A-magnitude is flagged uncalibrated."
+        ),
+    )
 
 
 class TranscriptWord(BaseModel):
@@ -44,8 +60,28 @@ class TranscriptWord(BaseModel):
     end: float | None = None
 
 
+class Phenomenon(BaseModel):
+    id: str
+    kind: str
+    t_start: float
+    t_end: float
+    amplitude_lp: float | None = None
+    amplitude_a: float | None = None
+    confidence: float = 1.0
+    stimulus_locked: bool | None = None
+    utterance_id: str | None = None
+    detector: str = ""
+    evidence: dict = Field(default_factory=dict)
+
+
 class AnalysisResponse(BaseModel):
     events: list[SummarizedEvent]
+    phenomena: list[Phenomenon] = Field(default_factory=list)
+    session_metrics: dict = Field(default_factory=dict)
+    calibration: dict = Field(default_factory=dict)
+    artefacts: dict = Field(default_factory=dict)
+    protocol: list[dict] = Field(default_factory=list)
+    channel: dict = Field(default_factory=dict)
     gsr_metadata: SignalMetadata
     audio_metadata: SignalMetadata
     transcript: list[TranscriptWord] = []

@@ -19,7 +19,10 @@ from ..api.schemas import AnalysisRequest
 from ..core.config import Settings
 from .asr import transcribe
 from .events import detect_events
+from .phenomena.conditioning import ChannelResolution, ChannelResolutionError, conditioned_frame
+from .phenomena.fusion import detect_phenomena
 from .summary import summarize_with_local_llm
+from .protocol import parse_session, segment_turns
 from .transcript import TranscribedWord, align_transcript, protocol_segment
 
 logger = logging.getLogger(__name__)
@@ -56,7 +59,7 @@ async def run_analysis(
     # Parsing and detection are CPU-bound; off the event loop so the API stays responsive
     # (health checks included) while a long recording is processed.
     report("parsing", 0.02)
-    gsr_df = await asyncio.to_thread(_load_gsr, csv_path)
+    gsr_df, channel_resolution = await asyncio.to_thread(_load_gsr, csv_path)
     gsr_metadata = SignalMetadata(
         sampling_rate_hz=_infer_sampling_rate(gsr_df),
         duration_sec=float(gsr_df["time_sec"].iloc[-1] - gsr_df["time_sec"].iloc[0]),
@@ -71,10 +74,13 @@ async def run_analysis(
         payload.ruleset_name,
     )
     report("detecting", 0.08)
+    # Detection runs on LP (log resistance), not kOhm: the same physiological event produces
+    # ~15x the kOhm delta at LP 5.5 that it does at LP 2.5, so kOhm thresholds are not
+    # comparable within a session. See docs/mindwalking-domain.md §4.
     events = await asyncio.to_thread(
         detect_events,
         gsr_df["time_sec"].to_numpy(),
-        gsr_df["resistance_kohm"].to_numpy(),
+        gsr_df["lp"].to_numpy(),
         payload.ruleset_name,
     )
     logger.info("Detected %d events", len(events))
@@ -82,11 +88,25 @@ async def run_analysis(
     report("transcribing", 0.15)
     words = await _transcribe_audio(wav_path, settings=settings, progress=report)
 
+    # The MindWalking phenomenon catalogue, run *after* transcription so the cross-modal layer
+    # has utterances to lock against. The Eiserne Regeln make timing relative to speech
+    # constitutive, so this ordering is not incidental.
+    utterances = segment_turns(words)
+    session_tree = parse_session(utterances, gsr_metadata.duration_sec)
+    phenomena = await asyncio.to_thread(
+        detect_phenomena,
+        gsr_df["time_sec"].to_numpy(),
+        gsr_df["lp"].to_numpy(),
+        payload.lp_offset,
+        payload.a_unit_lp,
+        utterances,
+    )
+
     report("summarising", 0.92)
     event_payloads = await _summaries_for_events(
         events=events,
         timestamps=gsr_df["time_sec"].to_numpy(),
-        readings=gsr_df["resistance_kohm"].to_numpy(),
+        readings=gsr_df["lp"].to_numpy(),
         words=words,
         pre_window=payload.pre_event_window_sec,
         post_window=payload.post_event_window_sec,
@@ -95,6 +115,18 @@ async def run_analysis(
 
     return {
         "events": event_payloads,
+        "phenomena": phenomena.as_dict()["phenomena"],
+        "session_metrics": phenomena.as_dict()["metrics"],
+        "calibration": phenomena.as_dict()["calibration"],
+        "artefacts": phenomena.as_dict()["artefacts"],
+        "protocol": [segment.as_dict() for segment in session_tree],
+        "channel": {
+            "strategy": channel_resolution.strategy,
+            "resolution_lp": channel_resolution.resolution_lp,
+            "quantised": channel_resolution.quantised,
+            "source_columns": channel_resolution.source_columns,
+            "notes": channel_resolution.notes,
+        },
         "gsr_metadata": gsr_metadata.model_dump(),
         "audio_metadata": audio_metadata.model_dump(),
         "transcript": [
@@ -194,46 +226,21 @@ def _context_words(
     return segment if segment is not None else widened
 
 
-_MS_COLUMN_RE = re.compile(r"(^|[^a-z])ms([^a-z]|$)|millis", re.IGNORECASE)
+def _load_gsr(path: Path) -> tuple[pd.DataFrame, ChannelResolution]:
+    """Parse a GSR export into the canonical `time_sec` / `lp` / `resistance_kohm` frame.
 
-
-def _time_divisor(times: pd.Series, column_name: str) -> float:
-    """Decide whether the time column is seconds or milliseconds.
-
-    The previous rule was "max > 1000 means milliseconds", which silently compressed any
-    recording longer than ~16.7 minutes that was logged in seconds: a 30-minute session
-    became 1.8 seconds, wrecking event timing and the min-gap rule.
-
-    The sample *interval* is the reliable signal. Biosignal exports are sampled at 1 Hz or
-    faster, so a median step of >= 1 unit cannot be seconds.
+    Channel selection lives in `phenomena.conditioning` so the preview and the analysis cannot
+    resolve the same file to different columns — which they did, the frontend plotting the
+    quantised `Baseline` while this analysed `Resistance(kOhm)`.
     """
-    if _MS_COLUMN_RE.search(column_name):
-        return 1000.0
+    try:
+        frame, resolution = conditioned_frame(pd.read_csv(path))
+    except ChannelResolutionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    steps = times.diff().dropna()
-    steps = steps[steps > 0]
-    if steps.empty:
-        return 1.0
-
-    median_step = float(steps.median())
-    if median_step >= 1.0:
-        logger.info("Time column %r looks like milliseconds (median step %.3f)", column_name, median_step)
-        return 1000.0
-    return 1.0
-
-
-def _load_gsr(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path)
-    time_column = next((c for c in df.columns if "time" in c.lower()), None)
-    resistance_column = next((c for c in df.columns if "resistance" in c.lower()), None)
-    if not time_column or not resistance_column:
-        raise HTTPException(status_code=400, detail="CSV must contain Time and Resistance columns")
-
-    df = df.rename(columns={time_column: "time", resistance_column: "resistance"})
-    df["time_sec"] = df["time"].astype(float) / _time_divisor(df["time"].astype(float), time_column)
-    df["resistance_kohm"] = df["resistance"].astype(float)
-    df = df.sort_values("time_sec").reset_index(drop=True)
-    return df[["time_sec", "resistance_kohm"]]
+    for note in resolution.notes:
+        logger.info("GSR conditioning: %s", note)
+    return frame, resolution
 
 
 def _load_audio_metadata(path: Path) -> SignalMetadata:

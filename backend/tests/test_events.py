@@ -138,3 +138,60 @@ def test_changepoint_indices_stay_in_range():
 
     assert candidates, "expected at least one changepoint"
     assert all(0 <= c < n for c in candidates), f"index out of range: {candidates}"
+
+
+# ---------------------------------------------------------------------------
+# LP domain (stage 1)
+# ---------------------------------------------------------------------------
+
+def test_equal_charge_drops_score_equally_regardless_of_level():
+    """The same 0.4 LP fall must score the same at LP 2.5 as at LP 5.5.
+
+    This is the reason detection moved off kOhm. Resistance is exponential in LP
+    (`ln R = 1.0157*LP - 1.0045`), so a 0.4 LP drop is ~1.9 kOhm near LP 2.5 but ~28 kOhm near
+    LP 5.5 — a 15x difference in `delta_kohm` for an identical physiological event. Any
+    threshold or ranking over kOhm therefore depends on where in the session the event happens.
+    """
+    import numpy as np
+
+    from app.services.events import detect_events
+
+    def step_signal(level: float) -> tuple[np.ndarray, np.ndarray]:
+        t = np.arange(0, 60, 0.05)
+        lp = np.full(t.size, level)
+        lp[t >= 30] = level - 0.4
+        return t, lp
+
+    low_t, low_lp = step_signal(2.5)
+    high_t, high_lp = step_signal(5.5)
+
+    low = detect_events(low_t, low_lp, "default")
+    high = detect_events(high_t, high_lp, "default")
+
+    assert low and high
+    low_peak = max(abs(e["delta_lp"]) for e in low)
+    high_peak = max(abs(e["delta_lp"]) for e in high)
+    assert low_peak == pytest.approx(high_peak, rel=1e-6)
+
+    # And the legacy kOhm field still shows the distortion, which is why it must not be
+    # thresholded on — it is kept only for the existing API contract.
+    low_kohm = max(abs(e["delta_kohm"]) for e in low)
+    high_kohm = max(abs(e["delta_kohm"]) for e in high)
+    assert high_kohm > 10 * low_kohm
+
+
+def test_events_report_lp_magnitudes():
+    import numpy as np
+
+    from app.services.events import detect_events
+
+    t = np.arange(0, 60, 0.05)
+    lp = np.full(t.size, 3.0)
+    lp[t >= 30] = 2.6
+
+    events = detect_events(t, lp, "default")
+
+    assert events
+    for event in events:
+        assert "delta_lp" in event
+        assert abs(event["delta_lp"]) <= 0.4 + 1e-9

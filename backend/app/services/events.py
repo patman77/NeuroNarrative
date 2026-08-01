@@ -6,6 +6,18 @@ from typing import Any
 import numpy as np
 import ruptures as rpt
 
+from .phenomena.conditioning import (
+    LP_DEVICE_STEP,
+    NOMINAL_LN_R_INTERCEPT,
+    NOMINAL_LN_R_SLOPE,
+)
+
+
+def _lp_delta_to_kohm(lp: float, baseline_lp: float) -> float:
+    """Legacy `delta_kohm` field, derived from LP rather than measured independently."""
+    to_kohm = lambda value: float(np.exp(NOMINAL_LN_R_SLOPE * value + NOMINAL_LN_R_INTERCEPT))
+    return to_kohm(lp) - to_kohm(baseline_lp)
+
 
 @dataclass
 class EventRule:
@@ -27,6 +39,14 @@ DEFAULT_RULESET = {
 
 
 def detect_events(timestamps: np.ndarray, readings: np.ndarray, ruleset: str = "default") -> list[dict[str, Any]]:
+    """Detect events in a charge-level (LP) signal.
+
+    `readings` is LP — log resistance, the scale the MindWalking method is defined on — not kOhm.
+    The derivative rule is z-scored and so survives the change of units unharmed, but the reported
+    magnitudes do not: `delta_lp` is the meaningful one and is comparable across a session and
+    between sessions. `delta_kohm` is retained for the existing API contract and is derived from
+    LP, so it inherits LP's session-position dependence and should not be thresholded on.
+    """
     if len(readings) == 0:
         return []
     rule = DEFAULT_RULESET.get(ruleset, DEFAULT_RULESET["default"])
@@ -51,16 +71,20 @@ def detect_events(timestamps: np.ndarray, readings: np.ndarray, ruleset: str = "
         zscores = _zscore(readings)
         baseline = float(np.median(readings))
         for idx in keep:
-            delta_kohm = float(readings[idx] - baseline)
+            delta_lp = float(readings[idx] - baseline)
             delta_z = float(zscores[idx]) if len(zscores) > idx else None
             events.append(
                 {
                     "event_id": f"evt-{idx}",
                     "time_sec": float(timestamps[idx]),
                     "rule": rule.name,
-                    "delta_kohm": delta_kohm,
+                    "delta_lp": delta_lp,
+                    "delta_kohm": _lp_delta_to_kohm(readings[idx], baseline),
                     "delta_z": delta_z,
-                    "score": float(abs(delta_z or 0) + abs(delta_kohm)),
+                    # Magnitudes in LP are ~0.05-2 while z-scores run to several units, so the
+                    # old `|z| + |delta|` sum would be all z. Scale the LP term by the device's
+                    # own smallest unit so both terms are in comparable "how many steps" units.
+                    "score": float(abs(delta_z or 0) + abs(delta_lp) / LP_DEVICE_STEP),
                 }
             )
     return events
