@@ -66,6 +66,21 @@ export interface SessionMetrics {
   unmasked_duration_sec: number;
 }
 
+export type HoverSource = "plot" | "phenomena" | "narrative";
+
+export interface HoverTarget {
+  timeSec: number;
+  source: HoverSource;
+}
+
+/** A vertical marking in the timeline plots. */
+export interface TimelineMarker {
+  id: string;
+  timeSec: number;
+  kind: string;
+  label: string;
+}
+
 export interface NarrativeSection {
   start_sec: number;
   end_sec: number;
@@ -221,6 +236,13 @@ function App() {
   // The operator's own calibration numbers. Both optional, and their absence is meaningful:
   // without lpOffset no charge zone is named at all, because a solo electrode reads a whole
   // session as Kampfzone. See docs/phenomena-detection-design.md §4.
+  // Lifted out of PhenomenaPanel: the filter chips also control which markers the timeline
+  // draws, so the plot and the list have to read the same set.
+  const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set(["T"]));
+  // The moment the pointer is over, and which panel it came from. The source matters: a panel
+  // must not auto-scroll itself in response to its own hover, or the row under the cursor
+  // slides away as you read it.
+  const [hover, setHover] = useState<HoverTarget | null>(null);
   const [lpOffset, setLpOffset] = useState<string>("");
   const [aUnitLp, setAUnitLp] = useState<string>("");
   const [previewVisible, setPreviewVisible] = useState<boolean>(false);
@@ -473,6 +495,29 @@ function App() {
 
   const timelineEvents = useMemo(() => analyzeMutation.data?.events ?? [], [analyzeMutation.data]);
   const transcript = useMemo(() => analyzeMutation.data?.transcript ?? [], [analyzeMutation.data]);
+
+  const timelineMarkers = useMemo<TimelineMarker[]>(() => {
+    const phenomena = analyzeMutation.data?.phenomena ?? [];
+    if (!phenomena.length) return [];
+    return phenomena
+      .filter((p) => !hiddenKinds.has(p.kind))
+      .map((p) => ({
+        id: p.id,
+        timeSec: p.t_start,
+        kind: p.kind,
+        label: `${p.kind} @ ${p.t_start.toFixed(1)}s`
+      }));
+  }, [analyzeMutation.data, hiddenKinds]);
+
+  const toggleKind = useCallback((kind: string) => {
+    setHiddenKinds((previous) => {
+      const next = new Set(previous);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  }, []);
+
   const analyzeDisabled = previewDisabled;
 
   const handleAnalyzeClick = useCallback(() => {
@@ -611,6 +656,9 @@ function App() {
             audioFileName={wavFile?.name ?? null}
             csvFileName={csvFile?.name ?? null}
             events={timelineEvents}
+            markers={timelineMarkers}
+            hover={hover}
+            onHover={setHover}
             seekRef={seekRequestRef}
           />
         ) : (
@@ -651,6 +699,10 @@ function App() {
               metrics={analyzeMutation.data?.session_metrics}
               protocol={analyzeMutation.data?.protocol}
               artefacts={analyzeMutation.data?.artefacts}
+              hiddenKinds={hiddenKinds}
+              onToggleKind={toggleKind}
+              hover={hover}
+              onHover={setHover}
               onSeek={handleSeek}
             />
           </section>
@@ -662,6 +714,8 @@ function App() {
             <SessionNarrative
               sections={analyzeMutation.data?.narrative ?? []}
               markdown={analyzeMutation.data?.narrative_markdown}
+              hover={hover}
+              onHover={setHover}
               onSeek={handleSeek}
             />
           </section>

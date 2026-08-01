@@ -1142,3 +1142,12 @@ details p {
   border-radius: 3px;
   padding: 0 0.3rem;
 }
+
+/* Cross-panel hover highlight: the row the pointer is pointing at, in whichever panel it is
+   not currently over. Deliberately a left border plus a wash rather than a colour change, so
+   it reads differently from the hover-under-the-cursor state. */
+.phenomenon-row-active,
+.narrative-section-active {
+  background: #1e293b;
+  box-shadow: inset 3px 0 0 #60a5fa;
+}

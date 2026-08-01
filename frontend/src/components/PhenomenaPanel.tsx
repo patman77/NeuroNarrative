@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import type { Phenomenon, ProtocolSegment, SessionMetrics } from "../App";
+import type { HoverTarget, Phenomenon, ProtocolSegment, SessionMetrics } from "../App";
 import { logEvent } from "../utils/logger";
+import { scrollChildIntoView } from "../utils/smoothScroll";
+import { KIND_BADGE, KIND_LABEL, kindColor } from "../utils/phenomenaVisuals";
 
 /**
  * The MindWalking phenomenon catalogue for a session.
@@ -27,28 +29,16 @@ interface StoredLabel {
 
 interface Props {
   recordingId: string;
+  hiddenKinds: Set<string>;
+  onToggleKind: (kind: string) => void;
+  hover: HoverTarget | null;
+  onHover: (hover: HoverTarget | null) => void;
   phenomena: Phenomenon[];
   metrics?: SessionMetrics;
   protocol?: ProtocolSegment[];
   artefacts?: { masked_fraction: number; spans: Array<{ start_sec: number; end_sec: number; reason: string }> };
   onSeek?: (timeSec: number) => void;
 }
-
-const KIND_LABEL: Record<string, string> = {
-  A: "Ausschlag",
-  T: "Ticken",
-  BE: "Blitzentladung",
-  LPA_slow: "Langsame Entladung",
-  X: "Kein Ausschlag",
-  KVZ: "Kommunikationsverzögerung",
-  KB: "Körperbewegung",
-  SN: "Schmutzige Nadel",
-  FN: "Freie Nadel"
-};
-
-// Badge text. `LPA_slow` is our internal discriminator; the manual's own abbreviation is
-// plain `LPA`, which is both more faithful and short enough not to overflow the badge column.
-const KIND_BADGE: Record<string, string> = { LPA_slow: "LPA" };
 
 const KIND_HINT: Record<string, string> = {
   A: "A fall of the needle — something became available.",
@@ -72,9 +62,21 @@ function chargeRank(p: Phenomenon): number {
   return (p.kind === "T" ? 0.25 : 1) * Math.abs(magnitude);
 }
 
-export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, artefacts, onSeek }: Props) {
+export function PhenomenaPanel({
+  recordingId,
+  phenomena,
+  metrics,
+  protocol,
+  artefacts,
+  hiddenKinds,
+  onToggleKind,
+  hover,
+  onHover,
+  onSeek
+}: Props) {
   const [order, setOrder] = useState<"charge" | "time">("charge");
-  const [hidden, setHidden] = useState<Set<string>>(new Set(["T"]));
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
   const [labels, setLabels] = useState<Record<string, Verdict>>({});
   const [labelError, setLabelError] = useState<string | null>(null);
 
@@ -136,17 +138,40 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
     [labels, recordingId]
   );
 
+  // Nearest visible row to an externally hovered moment.
+  const highlightedId = useMemo(() => {
+    if (!hover || hover.source === "phenomena") return null;
+    let best: string | null = null;
+    let bestDistance = Infinity;
+    for (const p of phenomena) {
+      if (hiddenKinds.has(p.kind)) continue;
+      const distance = Math.abs(p.t_start - hover.timeSec);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = p.id;
+      }
+    }
+    // Beyond this the "nearest" row is not about the hovered moment at all.
+    return bestDistance <= 30 ? best : null;
+  }, [hover, phenomena, hiddenKinds]);
+
+  useEffect(() => {
+    if (!highlightedId) return;
+    const cancel = scrollChildIntoView(listRef.current, rowRefs.current.get(highlightedId) ?? null);
+    return cancel;
+  }, [highlightedId]);
+
   const kinds = useMemo(
     () => Array.from(new Set(phenomena.map((p) => p.kind))).sort(),
     [phenomena]
   );
 
   const visible = useMemo(() => {
-    const filtered = phenomena.filter((p) => !hidden.has(p.kind));
+    const filtered = phenomena.filter((p) => !hiddenKinds.has(p.kind));
     return order === "charge"
       ? [...filtered].sort((a, b) => chargeRank(b) - chargeRank(a))
       : [...filtered].sort((a, b) => a.t_start - b.t_start);
-  }, [phenomena, hidden, order]);
+  }, [phenomena, hiddenKinds, order]);
 
   const segmentAt = (timeSec: number): ProtocolSegment | null => {
     const walk = (nodes: ProtocolSegment[]): ProtocolSegment | null => {
@@ -168,15 +193,6 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
       </section>
     );
   }
-
-  const toggle = (kind: string) => {
-    setHidden((previous) => {
-      const next = new Set(previous);
-      if (next.has(kind)) next.delete(kind);
-      else next.add(kind);
-      return next;
-    });
-  };
 
   return (
     <section className="phenomena-panel">
@@ -247,10 +263,11 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
             <button
               key={kind}
               type="button"
-              className={hidden.has(kind) ? "kind-chip kind-chip-off" : "kind-chip"}
-              aria-pressed={!hidden.has(kind)}
+              className={hiddenKinds.has(kind) ? "kind-chip kind-chip-off" : "kind-chip"}
+              style={hiddenKinds.has(kind) ? undefined : { borderColor: kindColor(kind) }}
+              aria-pressed={!hiddenKinds.has(kind)}
               title={KIND_HINT[kind] ?? kind}
-              onClick={() => toggle(kind)}
+              onClick={() => onToggleKind(kind)}
             >
               {kind} <span className="kind-count">{phenomena.filter((p) => p.kind === kind).length}</span>
             </button>
@@ -261,13 +278,18 @@ export function PhenomenaPanel({ recordingId, phenomena, metrics, protocol, arte
         </button>
       </div>
 
-      <ul className="phenomena-list">
+      <ul className="phenomena-list" ref={listRef} onMouseLeave={() => onHover(null)}>
         {visible.slice(0, 200).map((p) => {
           const segment = segmentAt(p.t_start);
           return (
             <li
               key={p.id}
-              className="phenomenon-row"
+              ref={(node) => {
+                if (node) rowRefs.current.set(p.id, node);
+                else rowRefs.current.delete(p.id);
+              }}
+              className={highlightedId === p.id ? "phenomenon-row phenomenon-row-active" : "phenomenon-row"}
+              onMouseEnter={() => onHover({ timeSec: p.t_start, source: "phenomena" })}
               // The whole row seeks. Keyboard users get the same via the time button below, so
               // the row itself stays a plain <li> rather than nesting the verdict buttons
               // inside an interactive element.

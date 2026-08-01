@@ -158,6 +158,27 @@ Affinity (`sched_getaffinity`) and cgroup v1/v2 quotas are honoured, so a 2-core
 
 Setting `NEURONARRATIVE_FRONTEND_DIST` mounts the built SPA at `/` through `SpaStaticFiles`, a `StaticFiles` subclass that falls back to `index.html` on 404 (plain `html=True` only covers directory indexes). API routes are registered *before* the mount, so they still win. This is the single-process mode desktop packaging will use — same origin, no proxy, no CORS.
 
+### Cross-panel hover linking
+
+The plot, the phenomena list and the narrative are one linked view. `App.tsx` owns both pieces of
+shared state: `hiddenKinds` (the filter chips, which also decide which vertical markings the
+charts draw) and `hover: {timeSec, source}`.
+
+**The `source` field is load-bearing.** A panel must not auto-scroll in response to its *own*
+hover, or the row under the cursor slides away as you read it. Each panel ignores hovers whose
+source is itself.
+
+Marker hit areas are invisible `<rect>`s around each line: a 2 px dashed line is close to
+unhoverable. Colours come from `utils/phenomenaVisuals.ts`, shared with the filter chips — a `BE`
+marker that is not the same colour as its `BE` chip makes the link invisible.
+
+Scrolling uses `utils/smoothScroll.ts`, not `scrollIntoView({behavior:"smooth"})`, whose duration
+the browser picks and grows with distance — across a 54-minute timeline that ran long enough for
+a second hover to arrive mid-flight. Ours eases in and out and is capped at 2 s.
+
+The detail chart's scroll container is **`.signal-chart`**, which carries `overflow-x: auto`, not
+the `detailWrapRef` wrapper around it. Scrolling the wrapper is a silent no-op.
+
 ### The session narrative
 
 `services/narrative.py` builds the automatic Sitzungsbericht: one section per protocol segment,

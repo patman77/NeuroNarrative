@@ -3,6 +3,9 @@ import WaveSurfer from "wavesurfer.js";
 import type { ParsedGsrResult, ParsedGsrSample } from "../utils/gsrParser";
 import { logEvent } from "../utils/logger";
 import type { SummarizedEvent } from "../App";
+import type { HoverTarget, TimelineMarker } from "../App";
+import { animateScroll } from "../utils/smoothScroll";
+import { kindColor } from "../utils/phenomenaVisuals";
 
 interface SignalPreviewProps {
   data: ParsedGsrResult;
@@ -10,6 +13,9 @@ interface SignalPreviewProps {
   audioFileName?: string | null;
   csvFileName?: string | null;
   events?: SummarizedEvent[];
+  markers?: TimelineMarker[];
+  hover?: HoverTarget | null;
+  onHover?: (hover: HoverTarget | null) => void;
   seekRef?: React.MutableRefObject<((time: number) => void) | null>;
 }
 
@@ -387,9 +393,23 @@ interface SignalChartProps {
   max: number;
   pxPerSecond: number;
   events?: SummarizedEvent[];
+  markers?: TimelineMarker[];
+  onHover?: (hover: HoverTarget | null) => void;
+  highlightTime?: number | null;
 }
 
-function SignalChart({ samples, currentTime, currentValue, min, max, pxPerSecond, events }: SignalChartProps) {
+function SignalChart({
+  samples,
+  currentTime,
+  currentValue,
+  min,
+  max,
+  pxPerSecond,
+  events,
+  markers,
+  onHover,
+  highlightTime
+}: SignalChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartHeight = 220;
   const topPadding = 16;
@@ -461,11 +481,20 @@ function SignalChart({ samples, currentTime, currentValue, min, max, pxPerSecond
     return ticks;
   }, [duration, width, leftPadding]);
 
-  // Filter events within the chart range
-  const visibleEvents = useMemo(() => {
-    if (!events?.length) return [];
-    return events.filter((ev) => ev.time_sec >= startTime && ev.time_sec <= endTime);
-  }, [events, startTime, endTime]);
+  // Markers come from the phenomenon catalogue and are already filtered by the kind chips, so
+  // toggling a chip removes its vertical markings here. Falls back to the legacy event list when
+  // no analysis has produced phenomena yet.
+  const visibleMarkers = useMemo<TimelineMarker[]>(() => {
+    const source: TimelineMarker[] = markers?.length
+      ? markers
+      : (events ?? []).map((ev) => ({
+          id: ev.event_id,
+          timeSec: ev.time_sec,
+          kind: "A",
+          label: `${ev.rule} @ ${ev.time_sec.toFixed(1)}s`
+        }));
+    return source.filter((m) => m.timeSec >= startTime && m.timeSec <= endTime);
+  }, [markers, events, startTime, endTime]);
 
   return (
     <div className="signal-chart" ref={containerRef}>
@@ -498,31 +527,36 @@ function SignalChart({ samples, currentTime, currentValue, min, max, pxPerSecond
         {/* Signal path */}
         <path d={path} fill="none" stroke="#0f6f8f" strokeWidth={2} strokeLinecap="round" />
 
-        {/* Event bubbles — vertical dashed lines with triangle markers */}
-        {visibleEvents.map((ev) => {
-          const ex = leftPadding + ((ev.time_sec - startTime) / duration) * width;
-          const triangleSize = 6;
-          const tx = ex;
-          const ty = topPadding;
+        {/* Vertical markings, one per phenomenon, coloured by kind so they read against the
+            filter chips. Hovering one drives the other two panels. */}
+        {visibleMarkers.map((marker) => {
+          const ex = leftPadding + ((marker.timeSec - startTime) / duration) * width;
+          const colour = kindColor(marker.kind);
+          const active = highlightTime != null && Math.abs(highlightTime - marker.timeSec) < 0.75;
           return (
-            <g key={ev.event_id}>
+            <g
+              key={marker.id}
+              onMouseEnter={() => onHover?.({ timeSec: marker.timeSec, source: "plot" })}
+              style={{ cursor: "pointer" }}
+            >
+              {/* Invisible wide hit area: a 2px dashed line is very hard to hover. */}
+              <rect x={ex - 6} y={topPadding - 12} width={12} height={chartHeight - bottomPadding - topPadding + 12} fill="transparent" />
               <line
                 x1={ex}
                 y1={topPadding}
                 x2={ex}
                 y2={chartHeight - bottomPadding}
-                stroke="#f59e0b"
-                strokeWidth={2}
+                stroke={colour}
+                strokeWidth={active ? 3 : 2}
                 strokeDasharray="4 3"
-                opacity={0.85}
+                opacity={active ? 1 : 0.8}
               />
-              {/* Triangle pointing down: tip at top of chart area */}
               <polygon
-                points={`${tx},${ty} ${tx - triangleSize},${ty - triangleSize * 1.5} ${tx + triangleSize},${ty - triangleSize * 1.5}`}
-                fill="#f59e0b"
-                opacity={0.9}
+                points={`${ex},${topPadding} ${ex - 6},${topPadding - 9} ${ex + 6},${topPadding - 9}`}
+                fill={colour}
+                opacity={active ? 1 : 0.9}
               />
-              <title>{`Event ${ev.event_id}: ${ev.rule} @ ${ev.time_sec.toFixed(1)}s`}</title>
+              <title>{marker.label}</title>
             </g>
           );
         })}
@@ -542,9 +576,11 @@ interface OverviewChartProps {
   max: number;
   onSeek: (time: number) => void;
   events?: SummarizedEvent[];
+  markers?: TimelineMarker[];
+  onHover?: (hover: HoverTarget | null) => void;
 }
 
-function OverviewChart({ samples, currentTime, min, max, onSeek, events }: OverviewChartProps) {
+function OverviewChart({ samples, currentTime, min, max, onSeek, events, markers, onHover }: OverviewChartProps) {
   const chartWidth = 920;
   const chartHeight = 120;
   const topPadding = 10;
@@ -605,11 +641,17 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events }: Overv
     return ticks;
   }, [duration, usableWidth, leftPadding]);
 
-  // Filter events within the chart range
-  const visibleEvents = useMemo(() => {
-    if (!events?.length) return [];
-    return events.filter((ev) => ev.time_sec >= startTime && ev.time_sec <= endTime);
-  }, [events, startTime, endTime]);
+  const visibleMarkers = useMemo<TimelineMarker[]>(() => {
+    const source: TimelineMarker[] = markers?.length
+      ? markers
+      : (events ?? []).map((ev) => ({
+          id: ev.event_id,
+          timeSec: ev.time_sec,
+          kind: "A",
+          label: `${ev.rule} @ ${ev.time_sec.toFixed(1)}s`
+        }));
+    return source.filter((m) => m.timeSec >= startTime && m.timeSec <= endTime);
+  }, [markers, events, startTime, endTime]);
 
   return (
     <div className="overview-chart">
@@ -649,29 +691,30 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events }: Overv
         {/* Signal path */}
         <path d={path} fill="none" stroke="#0f6f8f" strokeWidth={1.5} strokeLinecap="round" />
 
-        {/* Event bubbles — vertical lines + diamond markers */}
-        {visibleEvents.map((ev) => {
-          const ex = clamp(leftPadding + ((ev.time_sec - startTime) / duration) * usableWidth, leftPadding, usableWidth + leftPadding);
+        {/* Markings, coloured by kind and filtered by the chips in the phenomena panel. */}
+        {visibleMarkers.map((marker) => {
+          const ex = clamp(
+            leftPadding + ((marker.timeSec - startTime) / duration) * usableWidth,
+            leftPadding,
+            usableWidth + leftPadding
+          );
           const diamondSize = 5;
           const dy = topPadding + diamondSize;
+          const colour = kindColor(marker.kind);
           return (
-            <g key={ev.event_id}>
-              <line
-                x1={ex}
-                y1={topPadding}
-                x2={ex}
-                y2={chartHeight - bottomPadding}
-                stroke="#f59e0b"
-                strokeWidth={2}
-                opacity={0.8}
-              />
-              {/* Diamond shape */}
+            <g
+              key={marker.id}
+              onMouseEnter={() => onHover?.({ timeSec: marker.timeSec, source: "plot" })}
+              style={{ cursor: "pointer" }}
+            >
+              <rect x={ex - 5} y={topPadding} width={10} height={chartHeight - bottomPadding - topPadding} fill="transparent" />
+              <line x1={ex} y1={topPadding} x2={ex} y2={chartHeight - bottomPadding} stroke={colour} strokeWidth={2} opacity={0.8} />
               <polygon
                 points={`${ex},${dy - diamondSize} ${ex + diamondSize},${dy} ${ex},${dy + diamondSize} ${ex - diamondSize},${dy}`}
-                fill="#f59e0b"
+                fill={colour}
                 opacity={0.9}
               />
-              <title>{`Event ${ev.event_id}: ${ev.rule} @ ${ev.time_sec.toFixed(1)}s`}</title>
+              <title>{marker.label}</title>
             </g>
           );
         })}
@@ -691,7 +734,17 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events }: Overv
   );
 }
 
-export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, events, seekRef }: SignalPreviewProps) {
+export function SignalPreview({
+  data,
+  audioUrl,
+  audioFileName,
+  csvFileName,
+  events,
+  markers,
+  hover,
+  onHover,
+  seekRef
+}: SignalPreviewProps) {
   const waveformRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const detailWrapRef = useRef<HTMLDivElement | null>(null);
@@ -794,6 +847,22 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioUrl, data.sourceColumn, data.startTimeSec, data.endTimeSec]);
+
+  // A hover in the phenomena list or the narrative scrolls the detail chart to that moment.
+  // Only for hovers from elsewhere: reacting to our own marker hover would drag the chart out
+  // from under the pointer.
+  useEffect(() => {
+    if (!hover || hover.source === "plot") return;
+    // The scroll container is the chart itself (`.signal-chart` carries overflow-x: auto);
+    // the wrapper around it does not scroll, so scrolling that is a silent no-op.
+    const wrap = detailWrapRef.current?.querySelector<HTMLElement>(".signal-chart") ?? null;
+    if (!wrap) return;
+    const relative = hover.timeSec - data.startTimeSec;
+    const x = DETAIL_LEFT_PADDING + relative * pxPerSecond;
+    const target = x - wrap.clientWidth / 2;
+    const clamped = Math.max(0, Math.min(target, wrap.scrollWidth - wrap.clientWidth));
+    return animateScroll(wrap, { left: clamped });
+  }, [hover, pxPerSecond, data.startTimeSec]);
 
   const seekTo = (time: number) => {
     const ws = wsRef.current;
@@ -1041,6 +1110,8 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
           max={chartMax}
           onSeek={seekTo}
           events={events}
+          markers={markers}
+          onHover={onHover}
         />
       </div>
 
@@ -1078,7 +1149,7 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
             Fit page
           </button>
         </div>
-        <div ref={detailWrapRef}>
+        <div className="detail-chart-scroller" ref={detailWrapRef}>
           <SignalChart
             samples={data.samples}
             currentTime={currentTime + data.startTimeSec}
@@ -1087,6 +1158,9 @@ export function SignalPreview({ data, audioUrl, audioFileName, csvFileName, even
             max={detailMax}
             pxPerSecond={pxPerSecond}
             events={events}
+            markers={markers}
+            onHover={onHover}
+            highlightTime={hover ? hover.timeSec : null}
           />
         </div>
       </div>

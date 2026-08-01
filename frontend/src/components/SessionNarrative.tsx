@@ -1,4 +1,6 @@
-import type { NarrativeSection } from "../App";
+import { useEffect, useMemo, useRef } from "react";
+import type { HoverTarget, NarrativeSection } from "../App";
+import { scrollChildIntoView } from "../utils/smoothScroll";
 
 /**
  * The session narrative: a time-segmented, thematic account of the sitting.
@@ -12,6 +14,8 @@ import type { NarrativeSection } from "../App";
 interface Props {
   sections: NarrativeSection[];
   markdown?: string;
+  hover: HoverTarget | null;
+  onHover: (hover: HoverTarget | null) => void;
   onSeek?: (timeSec: number) => void;
 }
 
@@ -30,7 +34,25 @@ function download(markdown: string) {
   URL.revokeObjectURL(url);
 }
 
-export function SessionNarrative({ sections, markdown, onSeek }: Props) {
+export function SessionNarrative({ sections, markdown, hover, onHover, onSeek }: Props) {
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  const sectionKey = (section: NarrativeSection) => `${section.start_sec}-${section.label}`;
+
+  // The section *containing* the hovered moment — sections tile the session without gaps, so
+  // this is exact rather than a nearest-neighbour guess.
+  const highlightedKey = useMemo(() => {
+    if (!hover || hover.source === "narrative") return null;
+    const match = sections.find((s) => s.start_sec <= hover.timeSec && hover.timeSec < s.end_sec);
+    return match ? sectionKey(match) : null;
+  }, [hover, sections]);
+
+  useEffect(() => {
+    if (!highlightedKey) return;
+    return scrollChildIntoView(listRef.current, rowRefs.current.get(highlightedKey) ?? null);
+  }, [highlightedKey]);
+
   if (!sections.length) {
     return (
       <div className="narrative">
@@ -60,7 +82,7 @@ export function SessionNarrative({ sections, markdown, onSeek }: Props) {
         Click a section to jump there.
       </p>
 
-      <ol className="narrative-list">
+      <ol className="narrative-list" ref={listRef} onMouseLeave={() => onHover(null)}>
         {sections.map((section) => {
           const counts = Object.entries(section.phenomena_counts).sort();
           const range = `${formatClock(section.start_sec)}–${formatClock(section.end_sec)}`;
@@ -69,8 +91,17 @@ export function SessionNarrative({ sections, markdown, onSeek }: Props) {
           const heading = section.title === range ? "" : section.title;
           return (
             <li
-              key={`${section.start_sec}-${section.label}`}
-              className="narrative-section"
+              key={sectionKey(section)}
+              ref={(node) => {
+                if (node) rowRefs.current.set(sectionKey(section), node);
+                else rowRefs.current.delete(sectionKey(section));
+              }}
+              className={
+                highlightedKey === sectionKey(section)
+                  ? "narrative-section narrative-section-active"
+                  : "narrative-section"
+              }
+              onMouseEnter={() => onHover({ timeSec: section.start_sec, source: "narrative" })}
               onClick={onSeek ? () => onSeek(section.start_sec) : undefined}
             >
               <div className="narrative-heading">
