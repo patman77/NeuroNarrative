@@ -66,7 +66,22 @@ export function UploadPanel({ onCsvChange, onWavChange, csvName, wavName, parseE
           onDrop={handleCsvDrop}
         >
           <span>Galvanic skin response CSV</span>
-          <input type="file" accept=".csv" onChange={(event) => onCsvChange(event.target.files?.[0] ?? null)} />
+          {/*
+            The MIME types are load-bearing, not decoration. In the desktop shell WKWebView
+            reports only `_acceptedMIMETypes()` to pywebview's open-panel delegate, and an
+            extension-only accept list yields an *empty* array — so `.csv` alone produced no
+            filter at all and the dialog listed every file. `text/csv` maps to the
+            `public.comma-separated-values-text` UTI, which is what actually narrows the panel.
+            The bare `.csv` still matters for browsers and for Windows/Linux.
+
+            `application/vnd.ms-excel` is deliberately absent: macOS maps it to
+            `com.microsoft.excel.xls`, which would let .xls files through.
+          */}
+          <input
+            type="file"
+            accept=".csv,text/csv,text/comma-separated-values"
+            onChange={(event) => onCsvChange(event.target.files?.[0] ?? null)}
+          />
           <span className="file-name">{csvName ?? "No file selected — drag &amp; drop or click to browse"}</span>
         </label>
         <label

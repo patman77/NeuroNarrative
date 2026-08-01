@@ -158,6 +158,12 @@ Affinity (`sched_getaffinity`) and cgroup v1/v2 quotas are honoured, so a 2-core
 
 Setting `NEURONARRATIVE_FRONTEND_DIST` mounts the built SPA at `/` through `SpaStaticFiles`, a `StaticFiles` subclass that falls back to `index.html` on 404 (plain `html=True` only covers directory indexes). API routes are registered *before* the mount, so they still win. This is the single-process mode desktop packaging will use — same origin, no proxy, no CORS.
 
+### File dialog filters
+
+`<input type="file" accept="...">` needs **MIME types, not just extensions**, or the desktop shell shows no filter at all. WKWebView hands pywebview only `_acceptedMIMETypes()` (`webview/platforms/cocoa.py`, the `runOpenPanel` delegate), and that array is *empty* for an extension-only accept list — so `accept=".csv"` produced an unfiltered open panel listing every file on the machine, while the WAV input filtered correctly because it happened to carry `audio/wav`.
+
+pywebview maps each MIME type through `UTType.typeWithMIMEType_` and drops anything that resolves to a `dyn.` identifier, so only real UTIs survive: `text/csv` and `text/comma-separated-values` both give `public.comma-separated-values-text`. Don't add `application/vnd.ms-excel` — macOS maps it to `com.microsoft.excel.xls` and it would let spreadsheets through. Guarded by the `file dialog filters` Playwright spec.
+
 ### Desktop build
 
 `app/desktop.py` is the PyInstaller entrypoint (`./scripts/build_desktop.sh`, spec in `packaging/`). Things that will bite you if you edit it:

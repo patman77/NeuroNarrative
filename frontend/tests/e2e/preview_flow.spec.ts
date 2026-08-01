@@ -136,3 +136,23 @@ test('channel resolution: a real mindwalker export uses the raw ADC channel', as
     'kΩ'
   );
 });
+
+test('file dialog filters: the CSV input declares MIME types, not just an extension', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  const inputs = page.locator('input[type="file"]');
+
+  // The extension alone is not enough. In the desktop shell WKWebView hands pywebview only
+  // `_acceptedMIMETypes()`, which is empty for an extension-only accept list — so `.csv` on its
+  // own produced no filter and the open panel listed every file on the machine.
+  const csvAccept = (await inputs.nth(0).getAttribute('accept')) ?? '';
+  expect(csvAccept).toContain('.csv');
+  expect(csvAccept).toContain('text/csv');
+  // Would map to com.microsoft.excel.xls and let spreadsheets through.
+  expect(csvAccept).not.toContain('vnd.ms-excel');
+
+  const wavAccept = (await inputs.nth(1).getAttribute('accept')) ?? '';
+  expect(wavAccept).toContain('.wav');
+  expect(wavAccept).toContain('audio/wav');
+});
