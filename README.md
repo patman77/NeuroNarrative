@@ -59,7 +59,11 @@ NeuroNarrative is an in-development, local-first web application that synchronis
 │   └── compose.local.yml
 ├── docs/
 │   ├── images/               # frontend-overview.png — predates the current UI
-│   └── system-design.md      # Aspirational architecture reference
+│   ├── system-design.md      # Aspirational architecture reference
+│   ├── mindwalking-domain.md            # The MindWalking method: device, phenomena, session protocol
+│   ├── phenomena-detection-design.md    # Design + as-built: detecting A / T / BE / LPA / X / KVZ / KB
+│   ├── session-narrative-design.md      # Design: BK3 protocol parsing + summaries
+│   └── status-2026-08-01.md             # Current state: what is built, measured, and unproven
 ├── frontend/                 # React + Vite + TypeScript
 │   ├── src/
 │   │   ├── components/       # SignalPreview, EventTimeline, TranscriptTimeline, UploadPanel, RuleSelector

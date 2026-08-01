@@ -14,7 +14,7 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Vite proxy → backend on :8000 | ✅ | `frontend/vite.config.ts`; override with `VITE_PROXY_TARGET` (compose points it at `http://backend:8000`) |
 | CORS for any localhost port | ✅ | `backend/app/main.py` – `allow_origin_regex` covers `localhost`/`127.0.0.1` on any port |
 | CSV + WAV paired file upload | ✅ | `POST /api/upload`, `UploadPanel.tsx` |
-| GSR CSV parsing (column auto-detect) | ✅ | `frontend/src/utils/gsrParser.ts` |
+| GSR CSV parsing (channel resolution) | ✅ | `frontend/src/utils/gsrParser.ts`, mirroring `backend/app/services/phenomena/conditioning.py`; resolves any export to continuous LP |
 
 ---
 
@@ -22,8 +22,8 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Semicircular gauge (1–6.5 kΩ) | ✅ | `SignalPreview.tsx` – SVG gauge |
-| Gauge needle tracks resistance | ✅ | `calculateGaugePosition()` |
+| Semicircular gauge (LP 1.0–6.5) | ✅ | `SignalPreview.tsx` – SVG gauge. The scale is the Ladungspegel, not kΩ; it was mislabelled because the parser used to feed it rescaled resistance |
+| Gauge needle tracks charge level | ✅ | `calculateGaugePosition()` now just clamps the resolved LP; it used to reconstruct a needle position from Baseline + a linear kΩ offset, which is wrong (resistance is exponential in LP) and was O(n) per sample |
 | Orange baseline marker on gauge | ✅ | Drawn at `baselineAngle` |
 | Scrolling detail chart (zoomed) | ✅ | `SignalChart` component |
 | Full-recording overview chart | ✅ | `OverviewChart` – click to seek |
@@ -48,6 +48,31 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Pre/post event window config | ✅ | Sliders in `RuleSelector.tsx` |
 | Event list in `EventTimeline` component | ✅ | Polished cards: badge, score, delta_kohm color, seek-to button |
 | Event bubbles overlaid on signal chart | ✅ | Orange markers on `OverviewChart` + `SignalChart` |
+
+---
+
+## P8 – MindWalking phenomenon detection
+
+Design docs written 2026-07-31 from the two source manuals (`Mindwalking_BK3_ebook.pdf`,
+`Mindwalking_mwkurs_ebook.pdf`); the roadmap lives in `docs/phenomena-detection-design.md` §11.
+**Stages 1-4 are built** (2026-08-01); stages 5-8 are still design only. `docs/status-2026-08-01.md` is the current-state snapshot, including what is unproven.
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Domain reference from the manuals | ✅ | `docs/mindwalking-domain.md` – device physics, phenomenon catalogue, BK3 cue inventory, measurements from the real recordings |
+| Detection framework design | ✅ | `docs/phenomena-detection-design.md` – layered L0–L4 pipeline, rules → classical ML → DL, calibration, evaluation |
+| Narrative/summary design | ✅ | `docs/session-narrative-design.md` – BK3 grammar as a parse tree, cue-based function roles (**solo: one voice, no diarisation**), phenomenon-aware prompts, auto-Sitzungsbericht |
+| Solo cue phrasings + observed variants | ✅ | `services/protocol.py` `CUE_INVENTORY`, with an explicit "observed in practice, NOT in BK3" group. Stem-tolerant matching for ASR damage ("ruft ihr" → "Ruf dir"). Instruction turns matched on the reference transcript: 13 → 29 of 303 |
+| L0: shared channel resolver, LP domain | ✅ | `backend/app/services/phenomena/conditioning.py` + the mirrored resolver in `gsrParser.ts`. Five-step resolution order (Data+Baseline → Resistance+Baseline → Resistance → Conductance → Baseline), median-interval time units, `ChannelResolution` metadata returned by `/api/analyze` and shown as the preview's "Channel" metric. Golden fixture `tests/fixtures/mindwalker_export.csv` is asserted by both test suites. On the real 54-min recording: strategy `data+baseline`, 9.2e-5 LP resolution, 0.05 s for 161k samples, **23 → 64 events** |
+| L1 primitives + A/T/BE/LPA/LPD/LPB rules | ✅ | `phenomena/primitives.py` (tonic/phasic split, hysteresis leg segmentation) + `detectors/{deflection,discharge,level}.py` + `fusion.py`. Exposed as `phenomena` and `session_metrics` on `/api/analyze`. **Backend only — no UI yet.** Real sessions (24/28/54 min): 0.02–0.05 s each; Solo46 gives A=110, T=189, BE=34, LPA_slow=19, LPB 1.52 LP, LPD 3.5 A/min |
+| Phenomena in the UI | ✅ | `components/PhenomenaPanel.tsx` – ranked "Größte Ladung zuerst", per-kind filter chips, click-to-seek, uncalibrated/artefact caveats shown. `EventTimeline` still shows the legacy list alongside |
+| Stimulus-locked scoring, `X`, `KVZ` | ✅ | `detectors/stimulus.py` + `services/protocol.py`. Reference recording: 191 locked / 179 unlocked, 19 `X`, 30 `KVZ`. Unlocked lowers confidence, never filters — in solo it usually just means the operator was quiet |
+| Calibration (A-unit, solo offset) + artefact masking | ✅ | `calibration.py` + `detectors/artefact.py`. `lp_offset`/`a_unit_lp` optional on `/api/analyze`; **no zone is named without an offset**. Movement reported as `KB`, not silently masked. **No UI for the inputs yet** |
+| Stable phenomenon ids | ✅ | Content-derived hash in `phenomena/schema.py`; survives re-parse and sub-sample timing shifts |
+| Labelling mode + `Tag Number` ingestion | ❌ | **Hinge item**: unblocks all ML work. The device already exports a per-sample annotation channel and it is empty in every file |
+| BE-vs-KB and SN-vs-FN classifiers | ❌ | Needs the labelling path above |
+| HSMM session states (Abflachung, ÜBZ, EE, zähe Sitzung) | ❌ | |
+| Deep learning | ❌ | Explicitly gated on ≥50 labelled sessions – see design §8 |
 
 ---
 
@@ -140,7 +165,14 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Smoke test could silently attach to an already-running instance and test the *old* build | `scripts/smoke_desktop.sh` | ✅ Fixed – fails fast on "already running" |
 | Transcription saturated every core, making the machine unusable during an analysis | `backend/app/utils/cpu.py` | ✅ Fixed – adaptive budget (P-cores only, half of them, affinity + cgroup aware). Measured on M1 Pro: 4 threads 29 s vs. 10 threads 70 s, so the limit is **2.4× faster**, not a trade-off. `NEURONARRATIVE_ASR_THREADS` overrides. |
 | Overview chart emitted one SVG path command per sample (~1.5 MB path at 90k samples) | `frontend/src/components/SignalPreview.tsx` | ✅ Fixed – min/max decimation per pixel column, preserves spikes |
-| Two independent GSR CSV parsers: frontend `gsrParser.ts` (scored column detection) for the preview, backend `_load_gsr` (substring match) for analysis. They **had already diverged** — the frontend used the correct interval-based time-unit heuristic while the backend used the broken max-based one. A CSV the preview renders can still be rejected by `/api/analyze`. | `frontend/src/utils/gsrParser.ts`, `backend/app/services/analysis.py` | **High** |
+| Two independent GSR CSV parsers: frontend `gsrParser.ts` (scored column detection) for the preview, backend `_load_gsr` (substring match) for analysis. They **had already diverged** — the frontend used the correct interval-based time-unit heuristic while the backend used the broken max-based one. A CSV the preview renders can still be rejected by `/api/analyze`. On a real mindwalker export they also **pick different columns**: `gsrParser.ts` scores `/baseline/` highest (`bonus: 0.4`) and plots `Baseline`, while `_load_gsr` analyses `Resistance(kOhm)`. So the preview and the analysis show different signals. | `frontend/src/utils/gsrParser.ts`, `backend/app/services/analysis.py` | **High** |
+| **The preview's "jagged, low resolution" trace is the wrong column, not a rendering problem.** `Baseline` is the LP quantised to 0.05 steps — a literal staircase. The real export carries `Data(16 bit)`, which is linear in LP at ~0.0001 LP resolution (`Data = 10883·LP − 5235`, measured). The monotone spline added in `84ac740` smooths the symptom. See `docs/mindwalking-domain.md` §4. | `frontend/src/utils/gsrParser.ts` | ✅ Fixed – the resolver derives continuous LP from `Data(16 bit)` (9.2e-5 LP resolution) instead of plotting the 0.05-quantised `Baseline`. |
+| **Event detection runs on kΩ, but the method's scale is log-resistance (LP).** `ln R = 1.0157·LP − 1.0045` (r² 0.988, measured on the real recordings), so the same physiological event produces ~15× the kΩ delta at LP 5.5 that it does at LP 2.5. Thresholds and `delta_kohm` scores are therefore not comparable within a session, let alone across sessions. | `backend/app/services/events.py`, `analysis.py` | ✅ Fixed – detection runs on `lp`; events carry `delta_lp` and `delta_kohm` is derived, retained only for the API contract. Guarded by `test_equal_charge_drops_score_equally_regardless_of_level`. |
+| **`protocol_segment` used two cues that are not in BK3.** "Danke" is not a protocol closer anywhere in either manual — it is ordinary Bestätigung — and "Was siehst du noch" is not a BK3 cue either. | `backend/app/services/protocol.py` | ✅ Fixed – rewritten on the verified inventory. "Danke" is gone; "Was siehst du noch" is kept but moved to an explicit "observed in practice, NOT in BK3" group, because the operator does say it on the reference recording. |
+| Detected event rate was ~an order of magnitude below what the method implies (23 events on a 54-min recording). | `backend/app/services/phenomena/` | ✅ Addressed – the catalogue reports 115 A, 183 T, 34 BE, 19 LPA_slow, 19 X, 30 KVZ on that recording. Still unvalidated against labels. |
+| **The electrode-settling excursion at the start of a recording was reported as a real phenomenon**, ranking #1 by charge on the reference session. | `backend/app/services/phenomena/detectors/artefact.py` | ✅ Fixed – session-relative movement masking; the span is now reported as a `KB` at 6.98–12.36 s and excluded from the other detectors. |
+| `BE_MAX_RISE_TIME_SEC` (5.0 s) is unvalidated — the manual never quantifies "schnell". Sensitivity is tabulated in `detectors/discharge.py`: the count roughly doubles between 3 s and 5 s and plateaus after. Needs the stage-6 evaluation set to settle. | `backend/app/services/phenomena/detectors/discharge.py` | Medium |
+| Cross-kind ranking (a BE against an A) is exactly the comparison the manual says requires the sensitivity calibration we do not have. `charge_rank` orders by a fallback A-unit and is indicative only. | `backend/app/services/phenomena/fusion.py` | Medium |
 | Detail chart width is `duration × 80 px/s` — a 30-min recording produces a 144 000 px wide SVG. Scrolls, but heavy. Needs windowing to the visible range. | `frontend/src/components/SignalPreview.tsx` | Medium |
 | `summarize_with_local_llm` raised on an unreachable Ollama, failing all of `/api/analyze` | `backend/app/services/summary.py` | ✅ Fixed – returns `None`, logs a warning |
 | `save_temp_upload` used `async with upload`, which current Starlette no longer supports on `UploadFile` – **every upload returned 500** and no test covered the endpoint | `backend/app/services/storage.py` | ✅ Fixed – `test_upload.py` now covers the route |

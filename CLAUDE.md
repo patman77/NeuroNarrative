@@ -6,7 +6,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NeuroNarrative is a local-first web app that aligns GSR (galvanic skin response) recordings with audio sessions, detects physiologically significant events, transcribes speech around them, and optionally summarises each event with a local LLM. FastAPI backend + React/Vite frontend. Everything runs on the user's machine.
 
-`TODO.md` is the authoritative feature-status list and carries the known-issues table. `docs/system-design.md` is aspirational, not a description of the code — don't treat it as spec; its "Where the implementation diverges" section at the top maps plan to reality. All four markdown files were reconciled against the code on 2026-07-31; if you change behaviour, update `TODO.md` alongside it.
+`TODO.md` is the authoritative feature-status list and carries the known-issues table. `docs/system-design.md` is aspirational, not a description of the code — don't treat it as spec; its "Where the implementation diverges" section at the top maps plan to reality. The markdown files were reconciled against the code on 2026-08-01; if you change behaviour, update `TODO.md` alongside it.
+
+## The method behind the recordings
+
+A NeuroNarrative session is a **MindWalking** sitting: someone works through a scripted recall protocol while a *mindwalker* GSR device tracks their charge level. The GSR trace is the instrument, the audio is the spoken protocol, and our analysis automates the running notes the operator would otherwise keep by hand.
+
+**These are solo sessions** — one person, running the protocol on themselves and reviewing it afterwards. That is the design target, not an edge case: there is a single voice (alternating between instruction and content, separated by cue matching rather than diarisation), the single-hand electrode shifts the LP so absolute zone labels need a per-recording offset, and the audio is sparse by design (~29 words/min on the reference recording) because verbalising slows a solo session down. Don't add speaker diarisation, and don't treat quiet stretches as a broken recording. `docs/mindwalking-domain.md` is the reference extracted from the two source manuals (`~/Documents/mindwalking/2025-10-10-Skripte/`) — device physics, the phenomenon catalogue (LP, A, T, X, BE, LPA, LPD, SN, FN, KB, EE, ÜBZ…), the verbatim BK3 cue inventory, and measurements from the real 50 Hz recordings in `~/Documents/mindwalking/2024-11-SVB-Solo/mindwalker-recordings/`. Correct a misreading of the method there, not in the two design docs that build on it: `docs/phenomena-detection-design.md` (detection framework, roadmap in §11) and `docs/session-narrative-design.md` (protocol parsing and summaries). Both carry an "as built" section recording where building them proved the design wrong.
+
+**Stages 1-4 of that roadmap are done** (2026-08-01). `docs/status-2026-08-01.md` is the current-state snapshot and is explicit about what is unproven — read it before trusting any number the app prints.
+
+- **Stage 1**: channel resolution and the LP domain (see "Two CSV parsers, one resolution order" below). Detection runs on `lp`; `delta_kohm` is derived and kept only for the API contract — do not threshold on it.
+- **Stage 2**: `services/phenomena/` detects A / T / BE / LPA / LPD / LPB.
+- **Stage 3**: `services/protocol.py` parses the BK3 grammar; `detectors/stimulus.py` locks phenomena to utterances and adds `X` and `KVZ`.
+- **Stage 4**: `calibration.py` and `detectors/artefact.py`. `lp_offset` and `a_unit_lp` are optional on `/api/analyze`; **without an offset no charge zone is named at all**, because a solo electrode reads a whole session as Kampfzone. Don't "fix" that by naming one anyway.
+
+Rendered by `components/PhenomenaPanel.tsx`. The legacy `events` list and `EventTimeline` still exist alongside.
+
+Things in `phenomena/` and `protocol.py` that will bite if you edit them. `primitives.py` segments the signal with **hysteresis legs, not peak finding**: a Blitzentladung is by definition a fall that stays down, which has no local minimum, so `find_peaks` structurally could not see the catalogue's most important phenomenon. Legs also need both the stall timeout (two discharges separated by a plateau never reverse, so they merged into one) and the onset/peak trimming (a leg starts at the previous turning point, which made `rise_time_sec` the age of the recording — and rise time is the BE criterion, so getting it wrong silently disabled BE detection). All three were real bugs, each caught by an injection test in `tests/test_phenomena.py`.
+
+In `protocol.py`, cue matching is **stem-tolerant and scored by completeness ratio**. Both are load-bearing: Whisper renders "Ruf dir" as "ruft ihr" / "Rucht ihr" / "Huf dir", and scoring by raw matched-token count tied the FRR opener (5 of 5) against the "next" cue (5 of 6) so inventory order decided it and *no procedure ever opened*. `CUE_INVENTORY` has an explicit "observed in practice, NOT in BK3" group — keep that distinction; the manual is the authority on the method, the transcript on what was said. "Danke" is still not a cue.
+
+Artefact thresholds are **session-relative** (`median + 40*MAD` of |dLP/dt|), with a floor at 1.0 LP/s. A fixed 2.0 LP/s missed the clearest artefact in the corpus; a 0.15 LP/s floor masked genuine deflections. LP is log resistance, so 1.0 LP/s is a 2.76x resistance change per second — nothing physiological reaches it.
 
 ## Commands
 
@@ -54,9 +75,13 @@ The server keeps no session state — the returned paths *are* the handle. `_res
 
 `run_analysis` (`backend/app/services/analysis.py`) is the orchestrator: load GSR → detect events → transcribe whole audio → for each event, slice transcript words to its window and summarise. Per-event work runs concurrently via `asyncio.gather`.
 
-### Two independent CSV parsers
+### Two CSV parsers, one resolution order
 
-This is the most common source of drift. The **frontend** parses the GSR CSV itself for the live preview (`frontend/src/utils/gsrParser.ts` — scored column auto-detection over baseline/resistance/conductance/data/value, comma-decimal handling, auto-scaling). The **backend** parses the same file again for analysis (`_load_gsr` in `analysis.py` — naive `"time" in col` / `"resistance" in col` substring match, ms→s decided by median sample interval). They share no code and have different tolerances: a CSV the preview renders fine can still be rejected by `/api/analyze`. Change both when touching CSV column handling.
+The **frontend** parses the GSR CSV itself for the live preview (`frontend/src/utils/gsrParser.ts`); the **backend** parses the same file again for analysis (`_load_gsr` → `services/phenomena/conditioning.py`). They still share no code — that is the standing risk — but they now implement the *same* documented channel-resolution order and are pinned to it by a golden fixture (`tests/fixtures/mindwalker_export.csv`) that `backend/tests/test_conditioning.py` and the `channel resolution` Playwright spec both assert against. **Change both, and update the fixture expectations, when touching channel handling.**
+
+Both resolve any export to a continuous **LP** (Ladungspegel) channel, preferring, in order: `Data(16 bit)` anchored on `Baseline` → `Resistance` fitted against `Baseline` → `Resistance` with nominal constants → `Conductance` → bare `Baseline` (quantised, flagged). Time units come from the median sample interval, never the maximum.
+
+They previously diverged badly: the frontend scored `/baseline/` highest and drew the 0.05-quantised staircase, while the backend analysed `Resistance(kOhm)` — different signals from the same file, and the cause of the "jagged" preview.
 
 ### Event detection
 
