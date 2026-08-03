@@ -175,9 +175,120 @@ body {
   flex-direction: column;
   gap: 2rem;
   padding: 2.5rem 3rem 3.5rem;
-  max-width: 1200px;
+  /* Fluid up to a cap rather than a fixed 1200px, which left ~400px unused on either side of a
+     2000px window. The cap is not decoration: the narrative is flowing prose, and past roughly
+     this width its lines get too long to read comfortably. The split layout puts that prose in
+     a column of its own, which is what actually makes a wide monitor useful here. */
+  max-width: 1800px;
   margin: 0 auto;
   width: 100%;
+}
+
+/* --- Workspace layouts ------------------------------------------------------
+   Two arrangements of the same three panels, switched from the header and kept in
+   localStorage. Both solve the same complaint — scrolling down to a list took the plot off
+   screen — by different means, because which one works depends on the window.
+*/
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  min-width: 0;
+}
+
+/*
+  Stacked: the charts stay at the top of the window while the lists scroll past underneath.
+
+  Two things this has to get right, both learned the hard way.
+
+  The sticky element has to be `.workspace-plot`, not the chart stack inside the card. A sticky
+  box can only travel inside its *parent's* box, and the chart stack's parent is the card it
+  ends — so pinning it there gave it no travel at all and it scrolled away exactly as before.
+  `.workspace-plot`'s parent is the whole workspace, which is what actually spans the lists.
+
+  But pinning that at `top: 0` shows the card's *top* — 700px of gauge, metrics and waveform —
+  with the charts below the fold. The fix is a **negative** offset: `--plot-offset` is the
+  measured height of everything above the charts, so the card slides up by exactly that much and
+  stops with the charts against the window edge. The card's own order is untouched, which is the
+  point — the gauge belongs above the plot, where it has always been. Reordering it with
+  `order: -1` did work, but it put the gauge under the charts and made the page read backwards.
+
+  `--plot-offset` / `--plot-height` are measured by SignalPreview and set on `.workspace`.
+*/
+/*
+  Gated on window height, because the two charts are ~790px together: on a 720px-tall window a
+  pinned plot covers the entire viewport and every row underneath becomes unreachable — not
+  merely cramped, but impossible to click. Below the gate this layout behaves as it always did
+  and the split layout is the answer for a short, wide window.
+*/
+@media (min-height: 1000px) {
+  .workspace-stacked .workspace-plot {
+    position: sticky;
+    top: calc(-1 * var(--plot-offset, 0px));
+    z-index: 5;
+    /* The list rows scroll *behind* this, and the card's own background is translucent — without
+       an opaque backdrop the text shows through the plot. */
+    background: #070c18;
+    border-radius: 0.6rem;
+    box-shadow: 0 14px 26px -20px rgba(0, 0, 0, 0.95);
+  }
+
+  /*
+    The lists get the window minus the pinned plot, instead of a fixed 85vh that ignores it —
+    with the plot holding the top of the screen, an 85vh column put most of its rows permanently
+    behind it. The floor keeps this from collapsing the list to a couple of lines.
+  */
+  .workspace-stacked .analysis-column {
+    max-height: max(22rem, calc(100vh - var(--plot-height, 45vh) - 4rem));
+  }
+
+  /*
+    Anything the browser scrolls to the top of the window would land *behind* the pinned plot and
+    become unclickable — the classic sticky-header trap. `scroll-margin-top` makes the browser
+    stop short by the plot's height, so a scrolled-to row comes to rest just below it.
+  */
+  .workspace-stacked .analysis-columns,
+  .workspace-stacked .analysis-column,
+  .workspace-stacked .narrative-section,
+  .workspace-stacked .phenomenon-row,
+  .workspace-stacked .timeline-event-card {
+    scroll-margin-top: calc(var(--plot-height, 45vh) + 1.5rem);
+  }
+}
+
+/*
+  Split: the plot gets its own column beside the lists, so nothing needs pinning.
+
+  Below this width the two columns would each be too narrow for a phenomenon row, so the layout
+  falls back to stacked regardless of the switch — the setting is a preference, not a promise
+  that a 900px window can show two columns.
+*/
+@media (min-width: 1180px) {
+  .workspace-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 1.5rem;
+  }
+
+  .workspace-split .workspace-plot {
+    position: sticky;
+    top: 0;
+    min-width: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* One under the other: half of half a window is not enough width for a row. */
+  .workspace-split .analysis-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-split .analysis-column {
+    max-height: 46vh;
+  }
 }
 
 .app-grid {
@@ -525,6 +636,21 @@ details p {
   border-color: rgba(56, 189, 248, 0.7);
 }
 
+.layout-toggle {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.5rem;
+  background: rgba(30, 41, 59, 0.9);
+  color: inherit;
+  cursor: pointer;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.layout-toggle[aria-pressed="true"] {
+  border-color: rgba(124, 58, 237, 0.8);
+}
+
 .page-zoom-controls {
   display: inline-flex;
   align-items: center;
@@ -610,12 +736,50 @@ details p {
   line-height: 1.5;
 }
 
+/*
+  Legend for the speech bubbles over the trace. It appears only while something is being pointed
+  at, in the gap the section description already occupies, so the charts do not shift down when
+  it arrives — a plot that jumps every time the pointer enters a row is unusable.
+*/
+.plot-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: -0.9rem 0 0.6rem 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.4;
+  /* Fixed, and the idle state only hides the ink: the row keeps its space either way, so the
+     charts below never move when the legend arrives. */
+  height: 1.1rem;
+  overflow: hidden;
+}
+
+.plot-legend[data-active="no"] {
+  visibility: hidden;
+}
+
+.plot-legend-pill {
+  flex: none;
+  background: #7c3aed;
+  color: #fff;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
 /* Overview chart */
 .overview-chart {
   padding: 1rem;
   background: rgba(15, 23, 42, 0.4);
   border-radius: 0.8rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
+  /* The SVG follows this box's width down to a 600px floor, below which the whole session stops
+     being legible and this scrolls instead. */
+  overflow-x: auto;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .overview-chart svg {

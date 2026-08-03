@@ -5,7 +5,7 @@ import { logEvent } from "../utils/logger";
 import type { SummarizedEvent } from "../App";
 import type { HoverTarget, PlotSelection, TimelineMarker } from "../App";
 import { animateScroll } from "../utils/smoothScroll";
-import { kindColor } from "../utils/phenomenaVisuals";
+import { KIND_BADGE, kindColor } from "../utils/phenomenaVisuals";
 
 interface SignalPreviewProps {
   data: ParsedGsrResult;
@@ -20,6 +20,9 @@ interface SignalPreviewProps {
   seekRef?: React.MutableRefObject<((time: number) => void) | null>;
   /** Published so the page can scroll the charts into view without guessing at their offset. */
   plotSectionRef?: React.MutableRefObject<HTMLElement | null>;
+  /** How the card is built, so the stacked layout can pin the charts without reordering it.
+      `offsetPx` is the setup above them (gauge, metrics, waveform); `heightPx` is the charts. */
+  onPlotMetrics?: (metrics: { offsetPx: number; heightPx: number }) => void;
 }
 
 /** The moment or range the other panels are pointing at, drawn on both charts.
@@ -447,6 +450,189 @@ function HighlightBand({ highlight, toX, top, bottom, originSec, compact }: High
   );
 }
 
+/* --- Speech bubbles --------------------------------------------------------
+ *
+ * A dashed vertical line says *that* something was detected; the bubble says *what*. They appear
+ * for what is being pointed at — every filtered phenomenon inside a hovered narrative section, or
+ * the single one under the pointer in the list — and never for the whole catalogue, which on a
+ * 54-minute session would be several hundred labels and no signal left to read.
+ */
+
+const BUBBLE_HEIGHT = 15;
+const BUBBLE_LANE_GAP = 3;
+/** Horizontal clearance between two bubbles in the same lane. Below ~4 px they read as one pill. */
+const BUBBLE_X_GAP = 4;
+const BUBBLE_CHAR_PX = 6;
+const BUBBLE_PAD_PX = 10;
+/** Enough to describe a busy section; past this the labels are the noise, not the signal. */
+const MAX_BUBBLES = 60;
+
+interface BubbleItem {
+  id: string;
+  timeSec: number;
+  kind: string;
+  amplitudeA?: number | null;
+}
+
+interface PlacedBubble extends BubbleItem {
+  x: number;
+  y: number;
+  width: number;
+  text: string;
+  /** Where the phenomenon actually is, which is not where the bubble ended up. */
+  anchorX: number;
+}
+
+function bubbleText(item: BubbleItem, compact: boolean): string {
+  const badge = KIND_BADGE[item.kind] ?? item.kind;
+  // The overview holds the whole session in 860 px, so magnitudes there would collide into a
+  // single wall of pills. The kind alone still answers "what is in this stretch".
+  if (compact || item.amplitudeA == null) return badge;
+  return `${badge} ${item.amplitudeA.toFixed(1)}A`;
+}
+
+/**
+ * Lay bubbles out in lanes so none overlaps another.
+ *
+ * Greedy first-fit by time: each bubble goes in the topmost lane whose last bubble has already
+ * ended, so a sparse stretch stays on one line and a burst stacks. Anything that would need a
+ * lane past `maxLanes` is dropped and counted rather than drawn over its neighbour — an
+ * unreadable pile of overlapping labels is worse than an honest "+7 more".
+ */
+function packBubbles(
+  items: BubbleItem[],
+  options: {
+    toX: (timeSec: number) => number;
+    minX: number;
+    maxX: number;
+    top: number;
+    maxLanes: number;
+    compact: boolean;
+  }
+): { placed: PlacedBubble[]; dropped: number } {
+  const { toX, minX, maxX, top, maxLanes, compact } = options;
+  const laneEnds: number[] = [];
+  const placed: PlacedBubble[] = [];
+  let dropped = 0;
+
+  for (const item of [...items].sort((a, b) => a.timeSec - b.timeSec)) {
+    const text = bubbleText(item, compact);
+    const width = Math.max(20, text.length * BUBBLE_CHAR_PX + BUBBLE_PAD_PX);
+    const anchorX = toX(item.timeSec);
+    // Centred on the phenomenon, then pushed inside the plot area — a bubble half off the left
+    // edge is a bubble you cannot read.
+    const x = clamp(anchorX - width / 2, minX, Math.max(minX, maxX - width));
+
+    let lane = laneEnds.findIndex((end) => x >= end + BUBBLE_X_GAP);
+    if (lane === -1) {
+      if (laneEnds.length >= maxLanes) {
+        dropped += 1;
+        continue;
+      }
+      lane = laneEnds.length;
+      laneEnds.push(0);
+    }
+    laneEnds[lane] = x + width;
+    placed.push({
+      ...item,
+      text,
+      width,
+      anchorX,
+      x,
+      y: top + lane * (BUBBLE_HEIGHT + BUBBLE_LANE_GAP)
+    });
+  }
+
+  return { placed, dropped };
+}
+
+interface BubbleLayerProps {
+  items: BubbleItem[];
+  toX: (timeSec: number) => number;
+  minX: number;
+  maxX: number;
+  top: number;
+  maxLanes: number;
+  compact?: boolean;
+}
+
+function BubbleLayer({ items, toX, minX, maxX, top, maxLanes, compact }: BubbleLayerProps) {
+  const { placed, dropped } = useMemo(
+    () => packBubbles(items.slice(0, MAX_BUBBLES), { toX, minX, maxX, top, maxLanes, compact: Boolean(compact) }),
+    // `toX` is rebuilt every render; the geometry it closes over is in the other dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, minX, maxX, top, maxLanes, compact]
+  );
+  if (!items.length) return null;
+  const hidden = dropped + Math.max(0, items.length - MAX_BUBBLES);
+
+  return (
+    <g className="plot-bubbles" pointerEvents="none">
+      {placed.map((bubble) => {
+        const colour = kindColor(bubble.kind);
+        return (
+          <g key={bubble.id}>
+            {/* The bubble was pushed sideways to avoid its neighbours, so say which line it
+                belongs to. Without this a shifted label points at the wrong phenomenon. */}
+            <line
+              x1={bubble.x + bubble.width / 2}
+              y1={bubble.y + BUBBLE_HEIGHT}
+              x2={bubble.anchorX}
+              y2={bubble.y + BUBBLE_HEIGHT + BUBBLE_LANE_GAP + 2}
+              stroke={colour}
+              strokeWidth={1}
+              opacity={0.65}
+            />
+            <rect
+              x={bubble.x}
+              y={bubble.y}
+              width={bubble.width}
+              height={BUBBLE_HEIGHT}
+              rx={4}
+              fill={colour}
+              opacity={0.95}
+            />
+            <text
+              x={bubble.x + bubble.width / 2}
+              y={bubble.y + BUBBLE_HEIGHT / 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="9.5"
+              fontWeight={600}
+              fill="#ffffff"
+            >
+              {bubble.text}
+            </text>
+          </g>
+        );
+      })}
+      {hidden > 0 && (
+        <text x={maxX} y={top + BUBBLE_HEIGHT / 2} textAnchor="end" dominantBaseline="central" fontSize="9.5" fill={HIGHLIGHT_COLOUR}>
+          +{hidden} more
+        </text>
+      )}
+    </g>
+  );
+}
+
+/** Says what the bubbles are, in the two words it takes. Without it a row of coloured pills
+    appearing over the trace is just an unexplained change.
+ *
+ * Always rendered, and merely hidden when nothing is being pointed at: appearing and
+ * disappearing moved the charts 12 px down and back every time the pointer entered a row, and a
+ * plot that jumps under the cursor is worse than a line of permanently reserved space. */
+function BubbleLegend({ text, compact }: { text: string | null; compact?: boolean }) {
+  return (
+    <p className="plot-legend" aria-hidden={text ? undefined : true} data-active={text ? "yes" : "no"}>
+      <span className="plot-legend-pill">{compact ? "kind" : "kind · size"}</span>
+      <span>
+        labels {text ?? ""}, coloured to match the filter chips
+        {compact && " — magnitudes are in the detail view below"}.
+      </span>
+    </p>
+  );
+}
+
 /** The pointed-at moment, drawn on top of everything so it is findable at any zoom. */
 function HighlightCursor({ highlight, toX, top, bottom }: HighlightLayerProps) {
   if (!highlight) return null;
@@ -480,6 +666,7 @@ interface SignalChartProps {
   markers?: TimelineMarker[];
   onHover?: (hover: HoverTarget | null) => void;
   highlight?: PlotHighlight | null;
+  bubbles?: BubbleItem[];
 }
 
 function SignalChart({
@@ -492,7 +679,8 @@ function SignalChart({
   events,
   markers,
   onHover,
-  highlight
+  highlight,
+  bubbles
 }: SignalChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartHeight = 220;
@@ -586,6 +774,11 @@ function SignalChart({
   const toX = (t: number) =>
     clamp(leftPadding + ((t - startTime) / duration) * width, leftPadding, width + leftPadding);
 
+  const bubbleItems = useMemo(
+    () => (bubbles ?? []).filter((b) => b.timeSec >= startTime && b.timeSec <= endTime),
+    [bubbles, startTime, endTime]
+  );
+
   return (
     <div className="signal-chart" ref={containerRef}>
       <svg width={totalWidth} height={chartHeight} role="img" aria-label="GSR timeline">
@@ -664,6 +857,16 @@ function SignalChart({
         <line x1={indicatorX} y1={indicatorYTop} x2={indicatorX} y2={indicatorYBottom} stroke="#f44336" strokeWidth={2} strokeDasharray="6 6" />
         <circle cx={indicatorX} cy={currentY} r={5} fill="#f44336" stroke="#fff" strokeWidth={2} />
 
+        {/* Below the band's own range label when there is a band, so the two do not collide. */}
+        <BubbleLayer
+          items={bubbleItems}
+          toX={toX}
+          minX={leftPadding}
+          maxX={width + leftPadding}
+          top={topPadding + (highlight?.endSec != null ? 16 : 2)}
+          maxLanes={5}
+        />
+
         <HighlightCursor
           highlight={highlight}
           toX={toX}
@@ -686,6 +889,7 @@ interface OverviewChartProps {
   markers?: TimelineMarker[];
   onHover?: (hover: HoverTarget | null) => void;
   highlight?: PlotHighlight | null;
+  bubbles?: BubbleItem[];
 }
 
 function OverviewChart({
@@ -697,9 +901,30 @@ function OverviewChart({
   events,
   markers,
   onHover,
-  highlight
+  highlight,
+  bubbles
 }: OverviewChartProps) {
-  const chartWidth = 920;
+  // The overview was a fixed 920 px SVG. Once the page stopped being capped at 1200 px that left
+  // dead space on both sides of a wide window, and in the split layout it overflowed its column
+  // and the end of the recording was simply clipped off. It has to follow its container.
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [chartWidth, setChartWidth] = useState(920);
+  useEffect(() => {
+    const node = wrapRef.current;
+    if (!node) return;
+    const measure = () => {
+      // The whole session has to stay legible, so there is a floor; the container scrolls if the
+      // window is narrower than that.
+      const style = getComputedStyle(node);
+      const inner =
+        node.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
+      setChartWidth(Math.max(600, Math.round(inner)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const chartHeight = 120;
   const topPadding = 10;
   const bottomPadding = 30;
@@ -780,8 +1005,13 @@ function OverviewChart({
       usableWidth + leftPadding
     );
 
+  const bubbleItems = useMemo(
+    () => (bubbles ?? []).filter((b) => b.timeSec >= startTime && b.timeSec <= endTime),
+    [bubbles, startTime, endTime]
+  );
+
   return (
-    <div className="overview-chart">
+    <div className="overview-chart" ref={wrapRef}>
       <svg
         width={chartWidth}
         height={chartHeight}
@@ -869,6 +1099,18 @@ function OverviewChart({
           opacity={0.7}
         />
 
+        {/* Clear of the marker diamonds, which sit at the very top of the plot area. Only two
+            lanes fit in a 120 px chart, which is why the overview labels carry the kind alone. */}
+        <BubbleLayer
+          items={bubbleItems}
+          toX={toX}
+          minX={leftPadding}
+          maxX={usableWidth + leftPadding}
+          top={topPadding + 13}
+          maxLanes={2}
+          compact
+        />
+
         <HighlightCursor
           highlight={highlight}
           toX={toX}
@@ -892,8 +1134,11 @@ export function SignalPreview({
   onHover,
   selection,
   seekRef,
-  plotSectionRef
+  plotSectionRef,
+  onPlotMetrics
 }: SignalPreviewProps) {
+  const cardRef = useRef<HTMLElement | null>(null);
+  const plotStackRef = useRef<HTMLDivElement | null>(null);
   const waveformRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const detailWrapRef = useRef<HTMLDivElement | null>(null);
@@ -1020,6 +1265,66 @@ export function SignalPreview({
     if (selection) return { timeSec: selection.timeSec, endSec: selection.endSec, pinned: true };
     return null;
   }, [hover, selection]);
+
+  // Measure the card so the stacked layout can pin the charts alone while leaving the card in its
+  // natural order — gauge and waveform first, as they have always been. Both numbers move: the
+  // waveform appears when audio loads, the file-name lines wrap, the zoom controls reflow.
+  useEffect(() => {
+    if (!onPlotMetrics) return;
+    const card = cardRef.current;
+    const stack = plotStackRef.current;
+    if (!card || !stack) return;
+    const measure = () => {
+      const offsetPx = stack.getBoundingClientRect().top - card.getBoundingClientRect().top;
+      onPlotMetrics({ offsetPx: Math.max(0, Math.round(offsetPx)), heightPx: Math.round(stack.offsetHeight) });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    observer.observe(stack);
+    return () => observer.disconnect();
+  }, [onPlotMetrics]);
+
+  // What the bubbles label. `markers` has already been filtered by the kind chips, so a hidden
+  // kind is silent here too — the labels and the vertical markings always agree about what is
+  // being shown. Pointing at a span labels everything inside it; pointing at a single moment
+  // labels the one phenomenon it refers to, and nothing when it refers to none (a click in the
+  // legacy event list lands on a time with no phenomenon at all).
+  const bubbleSource = useMemo<BubbleItem[]>(() => {
+    if (!highlight || !markers?.length) return [];
+    const toItem = (m: TimelineMarker): BubbleItem => ({
+      id: m.id,
+      timeSec: m.timeSec,
+      kind: m.kind,
+      amplitudeA: m.amplitudeA
+    });
+
+    if (highlight.endSec != null && highlight.endSec > highlight.timeSec) {
+      return markers
+        .filter((m) => m.timeSec >= highlight.timeSec && m.timeSec < highlight.endSec!)
+        .map(toItem);
+    }
+
+    let best: TimelineMarker | null = null;
+    let bestDistance = Infinity;
+    for (const marker of markers) {
+      const distance = Math.abs(marker.timeSec - highlight.timeSec);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = marker;
+      }
+    }
+    // Tight, because a hovered row hands over that phenomenon's exact start. Anything looser
+    // would label a neighbour and quietly claim it was what you pointed at.
+    return best && bestDistance <= 0.5 ? [toItem(best)] : [];
+  }, [highlight, markers]);
+
+  const bubbleLegend =
+    bubbleSource.length === 0
+      ? null
+      : bubbleSource.length === 1
+      ? "the phenomenon you are pointing at"
+      : `the ${bubbleSource.length} phenomena in the span you are pointing at`;
 
   const seekTo = (time: number) => {
     const ws = wsRef.current;
@@ -1164,7 +1469,7 @@ export function SignalPreview({
   const zoomPercent = Math.round((pxPerSecond / DEFAULT_PX_PER_SECOND) * 100);
 
   return (
-    <section className="signal-preview card">
+    <section className="signal-preview card" ref={cardRef}>
       <div className="signal-preview-header">
         <div>
           <h2>Session preview</h2>
@@ -1254,12 +1559,18 @@ export function SignalPreview({
         </div>
       </div>
 
+      {/* The two charts are one unit. The stacked layout pins *this* while the setup above it —
+          gauge, metrics, waveform, file names — scrolls away, which it does by offsetting the
+          sticky card rather than by reordering anything: the card reads top to bottom the way it
+          always has. See `--plot-offset` in styles.css. */}
+      <div className="plot-stack" ref={plotStackRef}>
       <div className="overview-section" ref={(node) => { if (plotSectionRef) plotSectionRef.current = node; }}>
         <h3 className="section-title">Full Recording Overview</h3>
         <p className="section-description">
           Click anywhere on the timeline below to jump to that point. The red line shows your current position.
           {events && events.length > 0 && ` Orange markers show the ${events.length} detected event(s).`}
         </p>
+        <BubbleLegend text={bubbleLegend} compact />
         <OverviewChart
           samples={data.samples}
           currentTime={currentTime + data.startTimeSec}
@@ -1270,6 +1581,7 @@ export function SignalPreview({
           markers={markers}
           onHover={onHover}
           highlight={highlight}
+          bubbles={bubbleSource}
         />
       </div>
 
@@ -1278,6 +1590,7 @@ export function SignalPreview({
         <p className="section-description">
           This view shows a zoomed-in portion of the signal that follows the current playback position.
         </p>
+        <BubbleLegend text={bubbleLegend} />
         <div className="zoom-controls">
           <button type="button" onClick={zoomOut} className="nav-button zoom-button" title="Zoom out (-)">
             −
@@ -1319,8 +1632,10 @@ export function SignalPreview({
             markers={markers}
             onHover={onHover}
             highlight={highlight}
+            bubbles={bubbleSource}
           />
         </div>
+      </div>
       </div>
 
     </section>

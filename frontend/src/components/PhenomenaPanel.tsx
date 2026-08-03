@@ -58,6 +58,9 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Shared empty set, so "nothing highlighted" is a stable reference and does not re-render. */
+const EMPTY_IDS: ReadonlySet<string> = new Set<string>();
+
 function chargeRank(p: Phenomenon): number {
   const magnitude = p.amplitude_a ?? Math.abs(p.amplitude_lp ?? 0);
   return (p.kind === "T" ? 0.25 : 1) * Math.abs(magnitude);
@@ -140,19 +143,24 @@ export function PhenomenaPanel({
     [labels, recordingId]
   );
 
-  // Nearest visible row to an externally hovered moment.
-  const highlightedId = useMemo(() => {
-    if (!hover || hover.source === "phenomena") return null;
+  // The visible rows an externally hovered moment — or span — refers to.
+  //
+  // A span is *every* row inside it, not one representative. A narrative section covers minutes
+  // and usually holds a dozen phenomena; highlighting only the first said "this section is about
+  // that one moment", which is exactly wrong — the point of pointing at a section is to see the
+  // whole cluster it contains. `leadId` is the first of them, and only for scrolling: the list
+  // has to land somewhere, and the earliest row is where the section starts reading.
+  const { highlightedIds, leadId } = useMemo(() => {
+    const none = { highlightedIds: EMPTY_IDS, leadId: null as string | null };
+    if (!hover || hover.source === "phenomena") return none;
     const candidates = phenomena.filter((p) => !hiddenKinds.has(p.kind));
 
-    // A hovered span (a narrative section) covers minutes: the row it refers to is the first one
-    // inside it. Nearest-to-the-start would usually find nothing, because a section begins on a
-    // spoken cue and phenomena cluster later.
     if (hover.endSec != null) {
       const inside = candidates
         .filter((p) => p.t_start >= hover.timeSec && p.t_start < hover.endSec!)
         .sort((a, b) => a.t_start - b.t_start);
-      return inside.length ? inside[0].id : null;
+      if (!inside.length) return none;
+      return { highlightedIds: new Set(inside.map((p) => p.id)), leadId: inside[0].id };
     }
 
     let best: string | null = null;
@@ -165,14 +173,15 @@ export function PhenomenaPanel({
       }
     }
     // Beyond this the "nearest" row is not about the hovered moment at all.
-    return bestDistance <= 30 ? best : null;
+    if (!best || bestDistance > 30) return none;
+    return { highlightedIds: new Set([best]), leadId: best };
   }, [hover, phenomena, hiddenKinds]);
 
   useEffect(() => {
-    if (!highlightedId) return;
-    const cancel = scrollChildIntoView(listRef.current, rowRefs.current.get(highlightedId) ?? null);
+    if (!leadId) return;
+    const cancel = scrollChildIntoView(listRef.current, rowRefs.current.get(leadId) ?? null);
     return cancel;
-  }, [highlightedId]);
+  }, [leadId]);
 
   const kinds = useMemo(
     () => Array.from(new Set(phenomena.map((p) => p.kind))).sort(),
@@ -325,7 +334,7 @@ export function PhenomenaPanel({
                 if (node) rowRefs.current.set(p.id, node);
                 else rowRefs.current.delete(p.id);
               }}
-              className={highlightedId === p.id ? "phenomenon-row phenomenon-row-active" : "phenomenon-row"}
+              className={highlightedIds.has(p.id) ? "phenomenon-row phenomenon-row-active" : "phenomenon-row"}
               onMouseEnter={() => onHover({ timeSec: p.t_start, source: "phenomena" })}
               // The whole row seeks. Keyboard users get the same via the time button below, so
               // the row itself stays a plain <li> rather than nesting the verdict buttons

@@ -205,9 +205,32 @@ trace with both edges drawn — "from when to when" is the question a section he
 single line at its start does not answer it. Guarded by `tests/e2e/linked_view.spec.ts`, which
 stubs the analysis from a captured backend response so it needs no backend.
 
-`HoverTarget` carries an optional `endSec`. A narrative section spans minutes, so the row it
-refers to is the **first phenomenon inside it**; nearest-to-the-section-start finds nothing,
-because sections begin on a spoken cue and phenomena cluster later.
+`HoverTarget` carries an optional `endSec`. A narrative section spans minutes, so it highlights
+**every** filtered phenomenon inside it, not a representative one — the reason to point at a
+section is to see the cluster it contains, and marking only the first said the section was about
+that single moment. The first one is still singled out as `leadId`, but only to decide where the
+list scrolls to; nearest-to-the-section-start finds nothing at all, because sections begin on a
+spoken cue and phenomena cluster later.
+
+Both charts also label what is being pointed at with **speech bubbles** (`BubbleLayer` in
+`SignalPreview.tsx`): a dashed line says *that* something was detected, the bubble says *what*.
+They follow the same source as the markings — `markers`, already filtered by the kind chips — so
+a hidden kind is silent in both. A span labels everything inside it; a single moment labels the
+one phenomenon within 0.5 s of it, and nothing when there is none. Never the whole catalogue: on
+a 54-minute session that is several hundred labels and no visible trace.
+
+`packBubbles` is greedy first-fit **by time into lanes**, and the no-overlap rule is load-bearing
+rather than cosmetic — phenomena cluster, so centring each label on its own marker piles them
+into an unreadable stack. Anything that would need a lane past `maxLanes` (5 in the detail chart,
+2 in the 120 px overview) is dropped and counted as "+N more" rather than drawn over its
+neighbour. Each bubble draws a connector back to its marker, because a bubble pushed sideways to
+clear a neighbour otherwise points at the wrong line. The overview shows the kind alone; the
+whole session in 860 px cannot carry magnitudes as well.
+
+`BubbleLegend` is **always rendered** and merely hidden when idle. Appearing and disappearing
+moved both charts 12 px down and back every time the pointer entered a row, and a plot that jumps
+under the cursor is worse than a permanently reserved line — caught by the reveal-geometry E2E
+test, not by eye.
 
 The detail chart's scroll container is **`.signal-chart`**, which carries `overflow-x: auto`, not
 the `detailWrapRef` wrapper around it. Scrolling the wrapper is a silent no-op.
@@ -233,6 +256,56 @@ summariser and asks for JSON.
 **Local gotcha:** if Docker is running it binds `*:8000` over IPv6, and `localhost` resolves to
 `::1` first — so `npm run dev` proxies to Docker instead of the backend and every analysis 500s.
 Use `VITE_PROXY_TARGET=http://127.0.0.1:8000`.
+
+### The two workspace layouts
+
+`App.tsx` owns a `WorkspaceLayout` (`stacked` | `split`), toggled from the header and kept in
+localStorage. Both answer the same complaint — scrolling down to a list took the plot off screen —
+and which one works depends on the monitor, so it is a switch rather than a decision baked into
+the CSS. `.app-main` is fluid to **1800 px** now, not a fixed 1200, which left ~400 px unused on
+either side of a wide window.
+
+**`stacked`** pins the charts to the top of the window. Three things it has to get right:
+
+- The sticky element must be `.workspace-plot`, **not** the chart stack inside the card. A sticky
+  box can only travel inside its *parent's* box, and `.plot-stack`'s parent is the card it ends —
+  pinning it there gives it no travel at all and it scrolls away exactly as before.
+  `.workspace-plot`'s parent is the whole workspace, which is what actually spans the lists.
+- Pinning that at `top: 0` shows the card's *top* — 700 px of gauge, metrics and waveform — with
+  the charts below the fold. The offset is therefore **negative**: `--plot-offset` is the measured
+  height of everything above the charts, so the card slides up by exactly that much and stops with
+  the charts against the window edge. `order: -1` on `.plot-stack` also worked, but it put the
+  gauge *below* the charts and the page read backwards. Don't reintroduce it.
+- Everything is gated on `@media (min-height: 1000px)`. The two charts total ~790 px, so on a
+  720 px window a pinned plot covers the whole viewport and every row underneath becomes
+  unreachable — not cramped, *unclickable*. Below the gate this layout behaves as it always did.
+
+`--plot-offset` and `--plot-height` are measured by SignalPreview (`onPlotMetrics`, a
+`ResizeObserver` on the card and the stack, since the waveform appears late and the file-name
+lines wrap) and set as inline custom properties on `.workspace`. `--plot-height` also caps
+`.analysis-column`, which otherwise kept its 85vh and put most of its rows permanently behind the
+plot, and drives `scroll-margin-top` on everything the browser might scroll to the top — the
+classic sticky-header trap, where a scrolled-to row lands behind the header and cannot be
+clicked. The opaque background is required too: the card's own is translucent and list rows would
+otherwise show through the trace.
+
+How long the plot stays pinned is bounded by the workspace's own height, which is correct — once
+the lists are fully on screen there is nothing left to scroll under it, and below the workspace
+the plot scrolls away like anything else. A test that scrolls past that point is testing the
+wrong thing.
+
+**`split`** (≥1180 px) gives the plot its own sticky column and stacks the two lists in the
+other, so nothing needs pinning. Below that width both columns would be too narrow for a row and
+it falls back to stacked regardless of the setting.
+
+`OverviewChart` measures its container with a `ResizeObserver` instead of being a fixed 920 px
+SVG. At 1200 px page width that constant was invisible; once the page went fluid it left dead
+space on a wide window and **overflowed its column in the split layout, clipping the end of the
+recording off**. There is a 600 px floor below which the container scrolls.
+
+Note for tests: in stacked mode the gauge is scrolled out by the *sticky* rule, not by the page
+scroll, so "did the page scroll back to the head of the card" can no longer be asserted by
+checking the gauge is off-screen. Assert on the charts' position instead.
 
 ### Seeking, and the two-column results layout
 

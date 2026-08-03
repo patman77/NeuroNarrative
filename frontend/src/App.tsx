@@ -106,6 +106,9 @@ export interface TimelineMarker {
   timeSec: number;
   kind: string;
   label: string;
+  /** Magnitude in A-units, for the bubble labels. Null when uncalibrated or not applicable —
+      the bubble then shows the kind alone rather than a made-up number. */
+  amplitudeA?: number | null;
 }
 
 export interface NarrativeSection {
@@ -191,6 +194,19 @@ const PAGE_ZOOM_KEY = "neuronarrative.pageZoom";
 const PAGE_ZOOM_STEP = 1.1;
 const PAGE_ZOOM_MIN = 0.5;
 const PAGE_ZOOM_MAX = 3;
+
+/**
+ * How the plot and the two lists share the window.
+ *
+ * `stacked` keeps the familiar top-to-bottom order and pins the charts to the top of the window,
+ * so they stay on screen while you read down a list. `split` gives the plot its own column beside
+ * the lists on a wide window, so nothing has to be pinned at all.
+ *
+ * Neither is right for every screen — which is why it is a switch and not a decision baked into
+ * the CSS. Persisted, because it is a property of the monitor you are sitting at.
+ */
+export type WorkspaceLayout = "stacked" | "split";
+const LAYOUT_KEY = "neuronarrative.layout";
 
 interface PageZoom {
   percent: number;
@@ -286,7 +302,19 @@ function App() {
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  // Measured by SignalPreview and handed to CSS. The stacked layout pins the charts by sticking
+  // the whole card at a *negative* top offset — the setup above the charts scrolls out of view
+  // and the charts stop at the window edge — and the lists below are then capped to whatever the
+  // window has left, rather than to a fixed fraction of it that ignores the pinned plot.
+  const [plotMetrics, setPlotMetrics] = useState({ offsetPx: 0, heightPx: 0 });
+  const [layout, setLayout] = useState<WorkspaceLayout>(() =>
+    localStorage.getItem(LAYOUT_KEY) === "split" ? "split" : "stacked"
+  );
   const pageZoom = usePageZoom();
+
+  useEffect(() => {
+    localStorage.setItem(LAYOUT_KEY, layout);
+  }, [layout]);
 
   useEffect(() => {
     let cancelled = false;
@@ -568,7 +596,8 @@ function App() {
         id: p.id,
         timeSec: p.t_start,
         kind: p.kind,
-        label: `${p.kind} @ ${p.t_start.toFixed(1)}s`
+        label: `${p.kind} @ ${p.t_start.toFixed(1)}s`,
+        amplitudeA: p.amplitude_a ?? null
       }));
   }, [analyzeMutation.data, hiddenKinds]);
 
@@ -642,6 +671,19 @@ function App() {
               +
             </button>
           </div>
+          <button
+            type="button"
+            className="layout-toggle"
+            onClick={() => setLayout(layout === "stacked" ? "split" : "stacked")}
+            aria-pressed={layout === "split"}
+            title={
+              layout === "stacked"
+                ? "Charts are pinned to the top while the lists scroll. Switch to a side-by-side column layout."
+                : "Charts sit in their own column beside the lists. Switch back to the stacked layout."
+            }
+          >
+            {layout === "stacked" ? "Layout: stacked" : "Layout: split"}
+          </button>
           <span className={backendPillClass} title={backendOnline === false ? "Start: cd backend && uvicorn app.main:app --reload" : undefined}>
             {backendPillLabel}
           </span>
@@ -709,6 +751,19 @@ function App() {
           />
         </section>
 
+        {/* The plot and the lists are read against each other, so they are one region with two
+            arrangements rather than two independent sections. `workspace-{layout}` is the only
+            thing that differs between them — all the geometry lives in CSS. */}
+        <div
+          className={`workspace workspace-${layout}`}
+          style={
+            {
+              "--plot-offset": `${plotMetrics.offsetPx}px`,
+              "--plot-height": `${plotMetrics.heightPx}px`
+            } as React.CSSProperties
+          }
+        >
+        <div className="workspace-plot">
         {/* Scroll anchor: clicking a row jumps the player *and* brings the plot into view. */}
         <div ref={previewAnchorRef} />
 
@@ -725,6 +780,7 @@ function App() {
             selection={selection}
             seekRef={seekRequestRef}
             plotSectionRef={plotSectionRef}
+            onPlotMetrics={setPlotMetrics}
           />
         ) : (
           <section className="card preview-placeholder">
@@ -748,11 +804,14 @@ function App() {
             )}
           </section>
         )}
+        </div>
 
         {/*
           Phenomena and events sit side by side, each scrolling independently. Stacked, a
           54-minute session ran to hundreds of rows and the page became unusably tall — and the
           two lists are read against each other, so they need to be visible at the same time.
+          In the split layout they share the right-hand column and stack instead, because half a
+          half is not enough width for a row.
         */}
         <div className="analysis-columns">
           {/* Rendered unconditionally: a conditional column would leave the grid half empty
@@ -785,6 +844,7 @@ function App() {
               onSeek={handleSeek}
             />
           </section>
+        </div>
         </div>
 
         <section className="card">

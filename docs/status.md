@@ -12,7 +12,7 @@ and the report).
 ## What exists
 
 Stages 1–6 of the detection roadmap, plus the session narrative and the review UI. Exercised by
-**198 backend tests** and **15 Playwright E2E tests**.
+**198 backend tests** and **19 Playwright E2E tests**.
 
 ### Signal
 
@@ -35,12 +35,21 @@ Stages 1–6 of the detection roadmap, plus the session narrative and the review
 | Phenomena panel — ranked "Größte Ladung zuerst", kind filters with All/None, one-click verdicts | `PhenomenaPanel.tsx` |
 | Cross-panel linking — filters drive the timeline markings; hovering anywhere highlights and scrolls everywhere else | `App.tsx`, `utils/smoothScroll.ts` |
 | Marked position in both charts — violet cursor for the hovered or clicked moment; a narrative section shades its whole span | `SignalPreview.tsx` |
+| Speech-bubble labels — kind and A-magnitude for what is being pointed at, packed into lanes so none overlaps | `SignalPreview.tsx` |
 | Resizable, scrollable panes for detected events and the transcript | `ResizablePane.tsx` |
+| Two workspace layouts — plot pinned above the lists, or in its own column beside them; switched from the header, remembered | `App.tsx`, `styles.css` |
 
-All three hover directions are verified against a real analysis to mark exactly one target *and*
-to leave it inside the visible area of its list — the distinction matters, because an earlier
+All three hover directions are verified against a real analysis to mark their target *and* to
+leave it inside the visible area of its list — the distinction matters, because an earlier
 version highlighted correctly while scrolling the row off screen, which looks identical to
 highlighting nothing.
+
+Pointing at a narrative section marks every filtered phenomenon it contains, in the list and as
+labelled bubbles over both traces; pointing at a single phenomenon labels that one. The labels
+are laid out in lanes and are guaranteed not to overlap — the E2E test checks every pair of
+bubble rectangles, because a cluster of phenomena is exactly where the labels matter and exactly
+where naive placement stacks them into one illegible pile. What does not fit is reported as
+"+N more" rather than drawn on top of something else.
 
 A click does two further things. It leaves the moment marked after the pointer has gone, so what
 you jumped to is still identifiable while you read the row that produced it. And it repositions
@@ -48,6 +57,16 @@ the page on the **charts** rather than the top of the preview card — that card
 700 px of gauge, metrics and waveform, so the old anchor left the charts mid-window and threw the
 clicked row below the fold. Measured: the charts and their headings occupy ~1080 px, so in a
 shorter window the charts and the row cannot both be shown and the charts win.
+
+Scrolling down to a list used to take the plot off screen entirely. There are now two layouts for
+that, switched from the header and remembered: **stacked** pins the charts to the top of the
+window with the lists scrolling underneath — the gauge and waveform stay above them in the card
+and scroll out of view — and the lists are sized to whatever the window has left rather than to a
+fixed fraction of it. It needs a window at least 1000 px tall, because the two charts are ~790 px
+together and a pinned plot on a shorter screen covers every row underneath. **Split** gives the
+plot its own column beside the lists on a window at least 1180 px wide. The page is fluid to 1800 px rather than fixed at 1200, and the overview chart
+follows its container instead of being a fixed 920 px — at the old page width that constant was
+invisible, but in the split column it clipped the end of the recording off.
 
 These are covered by `frontend/tests/e2e/linked_view.spec.ts`, which stubs the analysis from a
 response captured from the backend, so it needs neither a backend nor a transcription run.
