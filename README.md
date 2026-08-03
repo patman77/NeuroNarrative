@@ -374,6 +374,25 @@ dev server and browser binaries, so run it locally when changing the preview UI.
 linked-view specs stub the analysis from a captured backend response, so they need only the
 dev server.
 
+### Releases
+
+Pushing a `v*` tag builds the desktop app on macOS (Apple silicon and Intel), Windows and
+Linux and attaches the archives to a GitHub release, together with a `SHA256SUMS` file:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Each platform is gated on a boot check — the bundle is launched headless and must answer
+`/api/health` and serve the SPA before it is packaged. Running the workflow manually
+(*Actions → Release → Run workflow*) builds the same artifacts without publishing anything,
+which is how to test a packaging change before committing to a tag.
+
+The builds are **not code-signed**: macOS Gatekeeper and Windows SmartScreen will both
+object, and the release notes explain how to get past them. On Linux the app has no bundled
+GUI toolkit and opens your default browser instead of a native window.
+
 ---
 
 ## What's next

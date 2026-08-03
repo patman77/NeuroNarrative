@@ -7,6 +7,7 @@
 # onedir, not onefile: onefile unpacks every native library to a temp dir on each launch,
 # which is slow and trips up ctranslate2/onnxruntime dylib loading.
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +19,9 @@ BACKEND = REPO_ROOT / "backend"
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 # Staged by build_desktop.sh; absent for a --no-model build.
 STAGED_MODELS = SPEC_DIR / "build" / "asr_models"
+# Set from the git tag by the release workflow. A shipped .app that reports 0.1.0 forever
+# gives a bug report no way to say which build it came from.
+VERSION = os.environ.get("NEURONARRATIVE_VERSION", "0.1.0").lstrip("v") or "0.1.0"
 
 datas = []
 binaries = []
@@ -93,7 +97,11 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     # Trim test/dev-only weight that would otherwise ride along.
-    excludes=["pytest", "_pytest", "tkinter", "matplotlib", "IPython", "requests"],
+    # torch is a declared dependency of mlx-whisper but is never imported on the path we
+    # use (load_model + transcribe); bundling it added 410 MB to the Apple silicon build
+    # for nothing. Verified by transcribing with it excluded — if a future mlx-whisper
+    # starts importing it, the smoke test's ASR check is what will say so.
+    excludes=["pytest", "_pytest", "tkinter", "matplotlib", "IPython", "requests", "torch"],
     noarchive=False,
 )
 
@@ -137,7 +145,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "NeuroNarrative",
             "CFBundleDisplayName": "NeuroNarrative",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": VERSION,
+            "CFBundleVersion": VERSION,
             "NSHighResolutionCapable": True,
             # No server sockets are exposed off-device; loopback only.
             "LSBackgroundOnly": False,

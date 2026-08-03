@@ -1,0 +1,235 @@
+name: Release
+
+# Builds the desktop bundle on every supported platform and attaches the archives to a
+# GitHub release when a `v*` tag is pushed.
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# `workflow_dispatch` builds the same artifacts without publishing anything, which is the
+# way to check a packaging change before committing to a tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      bundle_model:
+        description: 'Bundle the ASR model so the app transcribes offline on first run'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never cancel a release build half-way: a partially uploaded release is worse than a
+  # slow one.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should still produce the others, so a Windows-only problem
+      # does not cost the whole release.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: macos-arm64
+          - os: macos-13
+            target: macos-x86_64
+          - os: windows-latest
+            target: windows-x86_64
+          # Deliberately not ubuntu-latest: PyInstaller bundles link against the build
+          # machine's glibc, so building on the newest Ubuntu would produce a binary that
+          # refuses to start on any older distro. 22.04 gives a 2.35 baseline.
+          - os: ubuntu-22.04
+            target: linux-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend and packaging dependencies
+        working-directory: backend
+        # `gpu` carries an environment marker for darwin/arm64, so it is a no-op on the
+        # other three runners and this one line is correct everywhere.
+        run: pip install -e ".[asr,desktop,packaging,gpu]"
+
+      - name: Build the desktop bundle
+        shell: bash
+        env:
+          # Stamped into the macOS Info.plist, so a bug report can name its build.
+          NEURONARRATIVE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0-dev' }}
+        run: |
+          # Default to bundling the model: a first run that has to fetch ~465 MB before it
+          # can transcribe is a poor first impression, and the model is most of what makes
+          # the app work without a network.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.bundle_model }}" != "true" ]; then
+            scripts/build_desktop.sh --no-model
+          else
+            scripts/build_desktop.sh
+          fi
+
+      - name: Check the bundle boots
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            macOS)   BIN="dist/NeuroNarrative.app/Contents/MacOS/NeuroNarrative" ;;
+            Windows) BIN="dist/NeuroNarrative/NeuroNarrative.exe" ;;
+            *)       BIN="dist/NeuroNarrative/NeuroNarrative" ;;
+          esac
+          test -f "$BIN" || { echo "no executable at $BIN"; ls -R dist | head -50; exit 1; }
+
+          # Headless: serves and opens nothing. HF_HUB_OFFLINE proves nothing here reaches
+          # for the network just to start up.
+          NEURONARRATIVE_NO_BROWSER=1 HF_HUB_OFFLINE=1 "$BIN" > app.log 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+
+          URL=""
+          for _ in $(seq 1 90); do
+            URL="$(grep -o 'http://127.0.0.1:[0-9]*' app.log 2>/dev/null | head -1 || true)"
+            if [ -n "$URL" ] && curl -fsS "$URL/api/health" >/dev/null 2>&1; then break; fi
+            kill -0 "$APP_PID" 2>/dev/null || { echo "the app exited"; cat app.log; exit 1; }
+            sleep 1
+          done
+          [ -n "$URL" ] || { echo "the app never printed a URL"; cat app.log; exit 1; }
+          # The single-instance guard makes a second launch attach to the first and exit 0,
+          # which would pass this check against a *different* build. Impossible on a fresh
+          # runner, but the failure is silent enough to be worth one line.
+          if grep -q "already running" app.log; then
+            echo "attached to an existing instance rather than the build under test"
+            exit 1
+          fi
+
+          echo "serving on $URL"
+          curl -fsS "$URL/api/health" | grep -q '"status":"ok"' || { cat app.log; exit 1; }
+          # The frozen bundle serving its own SPA is the part most likely to break: the
+          # frontend is bundled data, and a path mistake only shows up here.
+          curl -fsS "$URL/" | grep -q '<title>' || { echo "index.html not served"; cat app.log; exit 1; }
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # ditto, not zip: the .app carries symlinks and resource forks that plain zip
+          # mangles, and a mangled bundle will not launch.
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/NeuroNarrative.app "NeuroNarrative-${{ matrix.target }}.zip"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/NeuroNarrative -DestinationPath "NeuroNarrative-${{ matrix.target }}.zip"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          tar -C dist -czf "NeuroNarrative-${{ matrix.target }}.tar.gz" NeuroNarrative
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          # A glob, not the two exact names: only one of them exists per platform.
+          path: NeuroNarrative-${{ matrix.target }}.*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish release
+    needs: build
+    # Only a tag publishes. A manual run builds and leaves the artifacts on the run, which
+    # is what you want when testing a packaging change.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all platform builds
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect archives and checksums
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' \) -exec mv {} release/ \;
+          ls -lh release
+          cd release
+          # These builds are unsigned, so a checksum is the only way to tell a download
+          # apart from something else with the same name.
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Write release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<EOF
+          ## NeuroNarrative $TAG
+
+          Everything runs on your machine — recordings are never uploaded.
+
+          | Platform | Download |
+          |---|---|
+          | macOS (Apple silicon) | \`NeuroNarrative-macos-arm64.zip\` |
+          | macOS (Intel) | \`NeuroNarrative-macos-x86_64.zip\` |
+          | Windows (x64) | \`NeuroNarrative-windows-x86_64.zip\` |
+          | Linux (x86_64, glibc ≥ 2.35) | \`NeuroNarrative-linux-x86_64.tar.gz\` |
+
+          Verify a download against \`SHA256SUMS\`.
+
+          ### These builds are not code-signed
+
+          - **macOS**: Gatekeeper will refuse a downloaded copy. Right-click the app and
+            choose *Open*, or run \`xattr -dr com.apple.quarantine NeuroNarrative.app\`.
+          - **Windows**: SmartScreen shows "Windows protected your PC" — *More info* →
+            *Run anyway*.
+
+          ### Notes
+
+          - On **Linux** there is no bundled GUI toolkit, so the app serves locally and
+            opens your default browser instead of a native window. Everything else is the
+            same.
+          - Apple silicon uses the Metal (MLX) transcription backend; the Intel, Windows
+            and Linux builds use the CPU backend, which is slower on long recordings.
+          - Summaries need [Ollama](https://ollama.com) running locally. Without it the
+            analysis still completes — you get events, phenomena and the narrative
+            structure, but no generated prose.
+          EOF
+          cat notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            --title "NeuroNarrative $TAG" \
+            --notes-file notes.md \
+            release/*

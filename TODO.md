@@ -145,8 +145,8 @@ lives in `docs/phenomena-detection-design.md` §11.
 
 | Item | Status | Notes |
 |------|--------|-------|
-| PyInstaller desktop build (macOS) | ✅ | `packaging/neuronarrative.spec` + `scripts/build_desktop.sh` → `NeuroNarrative.app`, 328 MB with the ASR model bundled (253 MB with `--no-model`). Smoke-tested offline with no venv. |
-| Desktop build: Windows / Linux | ❌ | Spec is cross-platform apart from the macOS `BUNDLE` step; untried |
+| PyInstaller desktop build (macOS) | ✅ | `packaging/neuronarrative.spec` + `scripts/build_desktop.sh` → `NeuroNarrative.app`. Smoke-tested offline with no venv. |
+| Desktop build: Windows / Linux | 🔧 | Built by `.github/workflows/release.yml` on every `v*` tag (macOS arm64 + Intel, Windows x64, Linux x86_64), each gated on a boot check. **Not yet run** — the workflow has never fired, so Windows and Linux remain unproven in practice |
 | Code signing / notarization | ❌ | Unsigned; Gatekeeper blocks a downloaded copy |
 | Native window (not a browser tab) | ✅ | pywebview → system WKWebView. +4 MB, no Node, no second binary to sign. Electron/Tauri not needed. |
 | End-to-end tests (Playwright) | ✅ | `preview_flow.spec.ts` (11) + `linked_view.spec.ts` (12) – 23 tests, all pass. Needs dev server on **:5175** (config `baseURL`) and `npx playwright install chromium`. The linked-view specs stub the backend from a captured response, so they need no analysis run. Not run in CI. |
@@ -242,7 +242,11 @@ are hard dependencies of faster-whisper even though we decode audio ourselves.
 | ASR model provisioning | **Both** supported: bundled by default (offline first run), `--no-model` for a leaner artifact that downloads on first use. Resolved decision 1 below. |
 | Smoke test | `scripts/smoke_desktop.sh` – runs the bundle under `env -i` (no venv, no Python on PATH) with `HF_HUB_OFFLINE=1`, then health → SPA → SPA fallback → upload → analyze → path confinement → real transcription. |
 
-**Measured:** 328 MB bundled-model `.app`, 253 MB with `--no-model`. Build takes ~1 min.
+**Measured (2026-08-03, Apple silicon):** 550 MB `.app` with `--no-model`. It was 985 MB until
+`torch` was excluded from the spec — mlx-whisper declares it as a dependency but never imports it
+on the load-model/transcribe path, so PyInstaller was bundling 410 MB for nothing. Verified by
+transcribing with it excluded. The Windows and Linux builds have neither MLX nor torch and are
+correspondingly smaller. Build takes ~2 min.
 
 Verified in the frozen bundle, offline, with no Python environment: 4 events detected on the
 synthetic fixture, and 20 words transcribed from `say`-synthesised speech with the excerpt
@@ -308,9 +312,10 @@ HTML file input), app icon (`icon=None` in the spec today), auto-update.
 
 - **Signing is calendar time, not just effort**: notarization round-trips and certificate
   issuance can take days of waiting.
-- **Windows/Linux are unproven.** The spec is portable apart from the macOS `BUNDLE` step,
-  but ctranslate2/onnxruntime ship native libs that often need per-platform hook fixes.
-- **CI artifact size**: a 328 MB bundle per OS per run will strain cache and artifact limits.
+- **Windows/Linux are unproven.** The release workflow builds them, but nobody has run one
+  yet; ctranslate2/onnxruntime ship native libs that often need per-platform hook fixes.
+- **CI artifact size**: ~550 MB per platform on Apple silicon, plus the model when bundled.
+  Well inside GitHub's 2 GB per-asset limit, but a slow download for users.
 - Resolved: PyInstaller + native ML wheels was the big unknown, and dropping torch in phase 0
   is what made the spec straightforward — the first build worked apart from an import bug.
 

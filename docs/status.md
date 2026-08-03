@@ -137,8 +137,11 @@ discrimination is L3 work that needs labels.
 far inside the 1 576–3 234 spread the `temperature=0.0` fix eliminated, but the earlier claim of
 run-to-run identity does not hold across days.
 
-**The desktop bundle is several features behind.** Last built before the narrative, the
-cross-panel linking, the layout fixes and the resizable panes.
+**The release workflow has never run.** `.github/workflows/release.yml` builds the desktop app for
+macOS (arm64 + Intel), Windows and Linux on a `v*` tag, and each platform is gated on a boot
+check — but no tag has been pushed, so only the macOS arm64 path has ever been exercised, and
+that locally. Windows and Linux bundles remain unproven: ctranslate2 and onnxruntime ship native
+libraries that often need per-platform PyInstaller fixes. Expect the first tag to need a second.
 
 ---
 
