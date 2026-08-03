@@ -321,3 +321,54 @@ test('the layout switch moves the plot into its own column and is remembered', a
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('button', { name: /^Layout:/ })).toHaveText('Layout: split');
 });
+
+test('hovering a marker in the overview travels the detail chart to it', async ({ page }) => {
+  await runAnalysis(page);
+
+  const scroller = page.locator('.signal-chart');
+  const markers = page
+    .locator('.overview-chart svg g')
+    .filter({ has: page.locator('polygon') });
+
+  // At the default zoom the detail chart holds ~14 s of a 60 s recording, so a marker near the
+  // end is well outside the window and the chart has to travel there.
+  await expect(await markers.count()).toBeGreaterThan(4);
+  const start = await scroller.evaluate((el) => el.scrollLeft);
+
+  await markers.last().hover();
+  // The easing is capped at 2 s (utils/smoothScroll.ts).
+  await page.waitForTimeout(2400);
+
+  const after = await scroller.evaluate((el) => ({
+    left: el.scrollLeft,
+    width: el.clientWidth
+  }));
+  expect(after.left).toBeGreaterThan(start + after.width);
+
+  // The moment it travelled to is the one being pointed at: the violet cursor is inside the
+  // visible window, not parked against an edge.
+  const cursorVisible = await page.evaluate(() => {
+    const wrap = document.querySelector('.signal-chart') as HTMLElement;
+    const line = wrap.querySelector('line[stroke="#7c3aed"]') as SVGLineElement;
+    const x = Number(line.getAttribute('x1'));
+    return x > wrap.scrollLeft && x < wrap.scrollLeft + wrap.clientWidth;
+  });
+  expect(cursorVisible).toBe(true);
+});
+
+test('a marker already on screen in the detail chart does not move it', async ({ page }) => {
+  await runAnalysis(page);
+
+  const scroller = page.locator('.signal-chart');
+  const markers = page
+    .locator('.overview-chart svg g')
+    .filter({ has: page.locator('polygon') });
+
+  // The first marker sits near 00:00, which is what the detail chart is already showing.
+  // Re-centring something you can see is motion for its own sake.
+  const before = await scroller.evaluate((el) => el.scrollLeft);
+  await markers.first().hover();
+  await page.waitForTimeout(900);
+  const after = await scroller.evaluate((el) => el.scrollLeft);
+  expect(Math.abs(after - before)).toBeLessThan(4);
+});

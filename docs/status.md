@@ -12,7 +12,7 @@ and the report).
 ## What exists
 
 Stages 1–6 of the detection roadmap, plus the session narrative and the review UI. Exercised by
-**198 backend tests** and **19 Playwright E2E tests**.
+**198 backend tests** and **21 Playwright E2E tests**.
 
 ### Signal
 
@@ -33,7 +33,7 @@ Stages 1–6 of the detection roadmap, plus the session narrative and the review
 | Evaluation — per-kind precision/recall/F1, ±2 s onset tolerance | `phenomena/evaluate.py` |
 | Session narrative — one section per protocol segment, real times and charge levels, markdown export | `services/narrative.py`, `SessionNarrative.tsx` |
 | Phenomena panel — ranked "Größte Ladung zuerst", kind filters with All/None, one-click verdicts | `PhenomenaPanel.tsx` |
-| Cross-panel linking — filters drive the timeline markings; hovering anywhere highlights and scrolls everywhere else | `App.tsx`, `utils/smoothScroll.ts` |
+| Cross-panel linking — filters drive the timeline markings; hovering anywhere highlights and scrolls everywhere else, including the detail chart travelling to a marker pointed at in the overview | `App.tsx`, `utils/smoothScroll.ts` |
 | Marked position in both charts — violet cursor for the hovered or clicked moment; a narrative section shades its whole span | `SignalPreview.tsx` |
 | Speech-bubble labels — kind and A-magnitude for what is being pointed at, packed into lanes so none overlaps | `SignalPreview.tsx` |
 | Resizable, scrollable panes for detected events and the transcript | `ResizablePane.tsx` |

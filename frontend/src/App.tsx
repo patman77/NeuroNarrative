@@ -70,7 +70,10 @@ export interface SessionMetrics {
   unmasked_duration_sec: number;
 }
 
-export type HoverSource = "plot" | "phenomena" | "narrative";
+/** Which panel the pointer is in. The two charts are separate sources, not one "plot": the
+    detail chart must not scroll itself out from under the pointer, but a hover in the overview
+    is exactly when the detail chart *should* travel to that moment. */
+export type HoverSource = "plot" | "overview" | "phenomena" | "narrative";
 
 export interface HoverTarget {
   timeSec: number;

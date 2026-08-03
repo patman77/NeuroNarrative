@@ -1073,7 +1073,7 @@ function OverviewChart({
           return (
             <g
               key={marker.id}
-              onMouseEnter={() => onHover?.({ timeSec: marker.timeSec, source: "plot" })}
+              onMouseEnter={() => onHover?.({ timeSec: marker.timeSec, source: "overview" })}
               style={{ cursor: "pointer" }}
             >
               <rect x={ex - 5} y={topPadding} width={10} height={chartHeight - bottomPadding - topPadding} fill="transparent" />
@@ -1242,9 +1242,10 @@ export function SignalPreview({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioUrl, data.sourceColumn, data.startTimeSec, data.endTimeSec]);
 
-  // A hover in the phenomena list or the narrative scrolls the detail chart to that moment.
-  // Only for hovers from elsewhere: reacting to our own marker hover would drag the chart out
-  // from under the pointer.
+  // A hover anywhere but the detail chart itself travels the detail chart to that moment — the
+  // phenomena list, the narrative, and the overview, where a marker you point at is often far
+  // outside the zoomed window. Hovers whose source is `plot` are the detail chart's own markers
+  // and are ignored, or it would drag itself out from under the pointer.
   useEffect(() => {
     if (!hover || hover.source === "plot") return;
     // The scroll container is the chart itself (`.signal-chart` carries overflow-x: auto);
@@ -1253,8 +1254,16 @@ export function SignalPreview({
     if (!wrap) return;
     const relative = hover.timeSec - data.startTimeSec;
     const x = DETAIL_LEFT_PADDING + relative * pxPerSecond;
+
+    // Already comfortably on screen: leave it alone. Re-centring something you can see is motion
+    // for its own sake, and at a shallow zoom every marker in the overview would be a jump. The
+    // margin keeps a moment sitting right against an edge from counting as visible.
+    const margin = Math.min(wrap.clientWidth * 0.15, 120);
+    if (x >= wrap.scrollLeft + margin && x <= wrap.scrollLeft + wrap.clientWidth - margin) return;
+
     const target = x - wrap.clientWidth / 2;
     const clamped = Math.max(0, Math.min(target, wrap.scrollWidth - wrap.clientWidth));
+    // The shared easing: accelerates, decelerates, capped at 2 s however far the jump.
     return animateScroll(wrap, { left: clamped });
   }, [hover, pxPerSecond, data.startTimeSec]);
 

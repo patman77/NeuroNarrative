@@ -190,6 +190,13 @@ Scrolling uses `utils/smoothScroll.ts`, not `scrollIntoView({behavior:"smooth"})
 the browser picks and grows with distance — across a 54-minute timeline that ran long enough for
 a second hover to arrive mid-flight. Ours eases in and out and is capped at 2 s.
 
+The **two charts are separate hover sources**, `plot` (detail) and `overview`, not one "plot".
+The detail chart ignores hovers from its own markers, or it would drag itself out from under the
+pointer — but a hover in the overview is precisely when it *should* travel, since the moment
+being pointed at is usually far outside the zoomed window. It only travels when the target is not
+already comfortably on screen (a 15 %-of-width margin, capped at 120 px); re-centring something
+you can see is motion for its own sake, and at a shallow zoom every marker would be a jump.
+
 `scrollChildIntoView` measures with `getBoundingClientRect`, **not `offsetTop`**. `offsetTop` is
 relative to the nearest *positioned* ancestor and these lists are not positioned, so it produced
 an offset measured from further up the tree and the list scrolled somewhere else entirely. The
