@@ -1,0 +1,188 @@
+{
+ "recording_id": "cfd38d9a1d42539e",
+ "events": [
+  {
+   "event_id": "evt-99",
+   "time_sec": 9.9,
+   "rule": "default",
+   "delta_kohm": 0.058349575198583636,
+   "delta_z": 0.24725758071807274,
+   "summary": null,
+   "transcript_excerpt": null,
+   "score": 0.626276447453807
+  },
+  {
+   "event_id": "evt-149",
+   "time_sec": 14.9,
+   "rule": "default",
+   "delta_kohm": -1.5481607636331127,
+   "delta_z": -4.223802059643211,
+   "summary": null,
+   "transcript_excerpt": null,
+   "score": 18.498930435462672
+  },
+  {
+   "event_id": "evt-304",
+   "time_sec": 30.4,
+   "rule": "default",
+   "delta_kohm": 0.37017972108577757,
+   "delta_z": 0.8301386361629901,
+   "summary": null,
+   "transcript_excerpt": null,
+   "score": 3.119582659002343
+  },
+  {
+   "event_id": "evt-599",
+   "time_sec": 59.900000000000006,
+   "rule": "default",
+   "delta_kohm": -0.052593278509034835,
+   "delta_z": 0.025442010201089226,
+   "summary": null,
+   "transcript_excerpt": null,
+   "score": 0.3734360425338638
+  }
+ ],
+ "phenomena": [
+  {
+   "id": "kb-8d4bbf0ac2",
+   "kind": "KB",
+   "t_start": 10.1,
+   "t_end": 16.900000000000002,
+   "amplitude_lp": null,
+   "amplitude_a": null,
+   "confidence": 0.6,
+   "stimulus_locked": null,
+   "utterance_id": null,
+   "detector": "artefact",
+   "evidence": {
+    "reason": "body movement"
+   }
+  },
+  {
+   "id": "kb-ec4e9c33e0",
+   "kind": "KB",
+   "t_start": 30.0,
+   "t_end": 32.800000000000004,
+   "amplitude_lp": null,
+   "amplitude_a": null,
+   "confidence": 0.6,
+   "stimulus_locked": null,
+   "utterance_id": null,
+   "detector": "artefact",
+   "evidence": {
+    "reason": "body movement"
+   }
+  },
+  {
+   "id": "kb-bab8317ef6",
+   "kind": "KB",
+   "t_start": 36.9,
+   "t_end": 36.9,
+   "amplitude_lp": null,
+   "amplitude_a": null,
+   "confidence": 0.6,
+   "stimulus_locked": null,
+   "utterance_id": null,
+   "detector": "artefact",
+   "evidence": {
+    "reason": "body movement"
+   }
+  }
+ ],
+ "session_metrics": {
+  "lpb": 0.11094682714822457,
+  "lp_min": 1.9661822177656172,
+  "lp_max": 2.0771290449138418,
+  "lpd_mean": 7.6526995478358355,
+  "lpd_track": [
+   {
+    "time_sec": 30.0,
+    "lpd": 7.6526995478358355
+   }
+  ],
+  "a_unit_lp": 0.05,
+  "a_unit_calibrated": false,
+  "counts": {
+   "KB": 3
+  },
+  "zone_min": null,
+  "zone_max": null,
+  "level_description": "LP 1.97-2.08, uncalibrated (upper quarter of this session at its highest)",
+  "unmasked_duration_sec": 46.0
+ },
+ "calibration": {
+  "a_unit_lp": 0.05,
+  "a_unit_calibrated": false,
+  "lp_offset": null,
+  "zones_available": false
+ },
+ "artefacts": {
+  "masked_fraction": 0.23166666666666666,
+  "spans": [
+   {
+    "start_sec": 10.1,
+    "end_sec": 16.900000000000002,
+    "reason": "body movement"
+   },
+   {
+    "start_sec": 30.0,
+    "end_sec": 32.800000000000004,
+    "reason": "body movement"
+   },
+   {
+    "start_sec": 32.9,
+    "end_sec": 36.8,
+    "reason": "rail (electrode or cable fault)"
+   },
+   {
+    "start_sec": 36.9,
+    "end_sec": 36.9,
+    "reason": "body movement"
+   }
+  ]
+ },
+ "protocol": [],
+ "narrative": [
+  {
+   "start_sec": 0.0,
+   "end_sec": 59.900000000000006,
+   "label": "00:00\u201301:00",
+   "procedure": null,
+   "title": "00:00\u201301:00",
+   "summary": "Kein gesprochener Inhalt in diesem Abschnitt.",
+   "highlights": [],
+   "lp_start": 2.0611685417719534,
+   "lp_end": 2.0735234511452805,
+   "lp_min": 0.9823736871491748,
+   "lp_max": 2.56649760838984,
+   "lp_delta": 0.012354909373327061,
+   "word_count": 0,
+   "phenomena_counts": {
+    "KB": 3
+   }
+  }
+ ],
+ "narrative_markdown": "# Sitzung nach Zeit- und Themenabschnitten\n\n## 00:00\u201301:00 | 00:00\u201301:00\n\nKein gesprochener Inhalt in diesem Abschnitt.\n\n*Ladungspegel 2.06 \u2192 2.07 \u00b7 3\u00d7 KB*\n\n---\n\nLadungspegel \u00fcber die Sitzung: 2.06 \u2192 2.07 (+0.01).\n\nDie Zeitangaben stammen aus den Protokoll-Anweisungen im Transkript und aus dem gemessenen Signal, nicht aus einer Sch\u00e4tzung.",
+ "channel": {
+  "strategy": "resistance-nominal",
+  "resolution_lp": 0.00010173287406489706,
+  "quantised": false,
+  "source_columns": {
+   "time": "time",
+   "resistance": "resistance"
+  },
+  "notes": [
+   "LP from 'resistance' using the nominal calibration (ln R = 1.0157*LP -1.0045); no Baseline column to fit against"
+  ],
+  "tags": []
+ },
+ "gsr_metadata": {
+  "sampling_rate_hz": 10.0,
+  "duration_sec": 59.900000000000006
+ },
+ "audio_metadata": {
+  "sampling_rate_hz": 16000.0,
+  "duration_sec": 60.0
+ },
+ "transcript": []
+}

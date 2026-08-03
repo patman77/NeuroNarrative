@@ -1,9 +1,9 @@
 import { ResizablePane } from "./ResizablePane";
-import type { TranscriptWord } from "../App";
+import type { SeekHandler, TranscriptWord } from "../App";
 
 interface TranscriptTimelineProps {
   transcript: TranscriptWord[];
-  onSeek?: (time: number) => void;
+  onSeek?: SeekHandler;
 }
 
 function formatTime(sec: number): string {

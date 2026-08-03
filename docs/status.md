@@ -12,7 +12,7 @@ and the report).
 ## What exists
 
 Stages 1–6 of the detection roadmap, plus the session narrative and the review UI. Exercised by
-**198 backend tests** and **11 Playwright E2E tests**.
+**198 backend tests** and **15 Playwright E2E tests**.
 
 ### Signal
 
@@ -34,12 +34,23 @@ Stages 1–6 of the detection roadmap, plus the session narrative and the review
 | Session narrative — one section per protocol segment, real times and charge levels, markdown export | `services/narrative.py`, `SessionNarrative.tsx` |
 | Phenomena panel — ranked "Größte Ladung zuerst", kind filters with All/None, one-click verdicts | `PhenomenaPanel.tsx` |
 | Cross-panel linking — filters drive the timeline markings; hovering anywhere highlights and scrolls everywhere else | `App.tsx`, `utils/smoothScroll.ts` |
+| Marked position in both charts — violet cursor for the hovered or clicked moment; a narrative section shades its whole span | `SignalPreview.tsx` |
+| Resizable, scrollable panes for detected events and the transcript | `ResizablePane.tsx` |
 
 All three hover directions are verified against a real analysis to mark exactly one target *and*
 to leave it inside the visible area of its list — the distinction matters, because an earlier
 version highlighted correctly while scrolling the row off screen, which looks identical to
 highlighting nothing.
-| Resizable, scrollable panes for detected events and the transcript | `ResizablePane.tsx` |
+
+A click does two further things. It leaves the moment marked after the pointer has gone, so what
+you jumped to is still identifiable while you read the row that produced it. And it repositions
+the page on the **charts** rather than the top of the preview card — that card opens with some
+700 px of gauge, metrics and waveform, so the old anchor left the charts mid-window and threw the
+clicked row below the fold. Measured: the charts and their headings occupy ~1080 px, so in a
+shorter window the charts and the row cannot both be shown and the charts win.
+
+These are covered by `frontend/tests/e2e/linked_view.spec.ts`, which stubs the analysis from a
+response captured from the backend, so it needs neither a backend nor a transcription run.
 
 ---
 

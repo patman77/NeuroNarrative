@@ -12,6 +12,10 @@ import type { ParsedGsrResult } from "./utils/gsrParser";
 import { parseGsrCsv } from "./utils/gsrParser";
 import "./styles.css";
 import { logEvent } from "./utils/logger";
+import { animateScroll } from "./utils/smoothScroll";
+
+/** Breathing room under a clicked row when the page scrolls the charts into view. */
+const REVEAL_BOTTOM_MARGIN_PX = 12;
 
 export interface TranscriptWord {
   text: string;
@@ -74,6 +78,25 @@ export interface HoverTarget {
   /** End of the hovered span, when there is one. A narrative section covers minutes, so the
       phenomenon "at" it is the first one inside it — not whichever happens to be nearest its
       start, which is often nothing at all. */
+  endSec?: number;
+}
+
+export interface SeekOptions {
+  /** The element that was clicked. The page scrolls the charts into view on a seek, and without
+      knowing where the click came from it scrolled the clicked row off the bottom of the
+      window — you jumped to a moment and lost the row you jumped from. */
+  origin?: HTMLElement | null;
+  /** End of the span the click refers to. A narrative section covers minutes, and the plots
+      shade that range so it is clear where it begins and ends. */
+  endSec?: number;
+}
+
+export type SeekHandler = (timeSec: number, options?: SeekOptions) => void;
+
+/** A moment, or a range, marked in both plots. Set by a click and outlives the pointer, unlike
+    `hover` — which is why it is separate state rather than a pinned `HoverTarget`. */
+export interface PlotSelection {
+  timeSec: number;
   endSec?: number;
 }
 
@@ -234,6 +257,12 @@ function App() {
   // event or phenomenon would silently do nothing whenever the preview happened to be closed.
   const pendingSeekRef = useRef<number | null>(null);
   const previewAnchorRef = useRef<HTMLDivElement | null>(null);
+  // The row a pending seek came from, so the deferred reveal can still keep it on screen.
+  const pendingOriginRef = useRef<HTMLElement | null>(null);
+  const revealCancelRef = useRef<(() => void) | null>(null);
+  // The charts inside the preview, published by SignalPreview the way `seekRequestRef` is.
+  // Null whenever the preview is collapsed, which is why `revealPlot` still needs the anchor.
+  const plotSectionRef = useRef<HTMLElement | null>(null);
   const [ruleset, setRuleset] = useState<string>("default");
   const [preWindow, setPreWindow] = useState<number>(5);
   const [postWindow, setPostWindow] = useState<number>(7);
@@ -247,6 +276,9 @@ function App() {
   // must not auto-scroll itself in response to its own hover, or the row under the cursor
   // slides away as you read it.
   const [hover, setHover] = useState<HoverTarget | null>(null);
+  // What was last clicked. The plots keep marking it after the pointer has moved away, so the
+  // moment you jumped to stays identifiable while you read the row that produced it.
+  const [selection, setSelection] = useState<PlotSelection | null>(null);
   const [lpOffset, setLpOffset] = useState<string>("");
   const [aUnitLp, setAUnitLp] = useState<string>("");
   const [previewVisible, setPreviewVisible] = useState<boolean>(false);
@@ -394,18 +426,38 @@ function App() {
 
       WaveSurfer's `seekTo` moves the playback head, so pressing play afterwards resumes from
       the clicked moment rather than from wherever the head happened to be. */
-  const revealPlot = useCallback(() => {
-    previewAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const revealPlot = useCallback((origin?: HTMLElement | null) => {
+    // The charts, not the top of the preview card. The card opens with the gauge, the metrics
+    // and the waveform — some 700 px of header — so anchoring on it scrolled the charts to the
+    // middle of the window and pushed the clicked row far below the fold. What the click is
+    // about is the trace, so that is what has to be on screen.
+    const plot = plotSectionRef.current ?? previewAnchorRef.current;
+    if (!plot) return;
+
+    const plotTop = plot.getBoundingClientRect().top + window.scrollY;
+    let target = plotTop;
+    if (origin?.isConnected) {
+      const rowBottom = origin.getBoundingClientRect().bottom + window.scrollY;
+      // Land with the clicked row just above the bottom edge. When the row is too far down for
+      // both to fit, `plotTop` wins and the charts are shown whole — but only the charts have
+      // to fit now, not the entire preview card, so in practice both are visible.
+      target = Math.min(plotTop, rowBottom - window.innerHeight + REVEAL_BOTTOM_MARGIN_PX);
+    }
+
+    revealCancelRef.current?.();
+    revealCancelRef.current = animateScroll(null, { top: Math.max(0, target) });
   }, []);
 
-  const handleSeek = useCallback(
-    (time: number) => {
+  const handleSeek = useCallback<SeekHandler>(
+    (time, options) => {
+      setSelection({ timeSec: time, endSec: options?.endSec });
       if (seekRequestRef.current) {
         seekRequestRef.current(time);
-        revealPlot();
+        revealPlot(options?.origin);
         return;
       }
       pendingSeekRef.current = time;
+      pendingOriginRef.current = options?.origin ?? null;
       setPreviewVisible(true);
     },
     [revealPlot]
@@ -423,11 +475,15 @@ function App() {
       if (seekRequestRef.current) {
         seekRequestRef.current(time);
         pendingSeekRef.current = null;
-        revealPlot();
+        revealPlot(pendingOriginRef.current);
+        pendingOriginRef.current = null;
         return;
       }
       if (frames++ < 60) raf = requestAnimationFrame(flush);
-      else pendingSeekRef.current = null;
+      else {
+        pendingSeekRef.current = null;
+        pendingOriginRef.current = null;
+      }
     };
     raf = requestAnimationFrame(flush);
     return () => cancelAnimationFrame(raf);
@@ -666,7 +722,9 @@ function App() {
             markers={timelineMarkers}
             hover={hover}
             onHover={setHover}
+            selection={selection}
             seekRef={seekRequestRef}
+            plotSectionRef={plotSectionRef}
           />
         ) : (
           <section className="card preview-placeholder">

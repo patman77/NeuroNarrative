@@ -71,6 +71,8 @@ lives in `docs/phenomena-detection-design.md` §11.
 | Session narrative (auto-Sitzungsbericht) | ✅ | `services/narrative.py` + `SessionNarrative.tsx`. Section boundaries from the spoken BK3 cues, charge levels from the signal, prose from the LLM — which never chooses a timestamp; `strip_invented_times` removes the ones it invents anyway. Markdown export. Reference recording: 12 sections tiling 00:00–53:55, LP 6.00 → 4.79 |
 | Review UI | ✅ | Two-column layout (phenomena left, narrative right), each list scrolling under a bounded height; whole rows click-to-seek and open a collapsed preview first; kind filter chips with All/None; one-click verdicts; resizable scrollable panes for the event list and transcript |
 | Cross-panel linking | ✅ | Kind filters drive the timeline markings; hovering in any panel highlights and scrolls the other two, and scrolls the detail chart. `utils/smoothScroll.ts` — ease-in-out, capped at 2 s |
+| Marked position in both plots | ✅ | Hover and click draw a violet cursor in the overview and detail charts; a click's mark outlives the pointer. A narrative section shades its whole span semi-transparently in both |
+| Click keeps the clicked row on screen | ✅ | `revealPlot` anchors on the charts and lands the row just above the bottom edge instead of scrolling the page to the top of the preview card |
 | **Stage 7** — HSMM session states (Abflachung, ÜBZ, EE, zähe Sitzung) | ❌ | Needs labels |
 | Weak supervision + BE-vs-KB / SN-vs-FN classifiers | ❌ | Tooling ready; **needs labels**, none made yet |
 | `SN` / `FN` detection | ❌ | Same blocker |

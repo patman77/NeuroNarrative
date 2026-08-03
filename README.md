@@ -46,7 +46,7 @@ so every figure the app prints is a count rather than a measured accuracy — se
 | Session export: CSV, JSON, SRT, PDF | ✅ |
 | Backend health status pill with auto-retry | ✅ |
 | Backend unit tests (pytest, 198 passing) | ✅ |
-| Frontend E2E tests (Playwright, 11 passing) | ✅ |
+| Frontend E2E tests (Playwright, 15 passing) | ✅ |
 | ESLint config (TypeScript + React rules) | ✅ |
 | CI: GitHub Actions (frontend lint + typecheck + build, backend pytest) | ✅ |
 | Speaker diarisation | ❌ deliberately not done — the corpus is solo, so there is nothing to separate; cue matching carries the role signal instead |
@@ -370,7 +370,9 @@ npx playwright test
 
 `.github/workflows/ci.yml` runs the frontend lint/typecheck/build and the backend pytest
 suite on every push and PR to `main`. The E2E suite is **not** in CI — it needs a running
-dev server and browser binaries, so run it locally when changing the preview UI.
+dev server and browser binaries, so run it locally when changing the preview UI. The
+linked-view specs stub the analysis from a captured backend response, so they need only the
+dev server.
 
 ---
 

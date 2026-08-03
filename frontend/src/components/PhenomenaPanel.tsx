@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import type { HoverTarget, Phenomenon, ProtocolSegment, SessionMetrics } from "../App";
+import type { HoverTarget, Phenomenon, ProtocolSegment, SeekHandler, SessionMetrics } from "../App";
 import { logEvent } from "../utils/logger";
 import { scrollChildIntoView } from "../utils/smoothScroll";
 import { KIND_BADGE, KIND_LABEL, kindColor } from "../utils/phenomenaVisuals";
@@ -38,7 +38,7 @@ interface Props {
   metrics?: SessionMetrics;
   protocol?: ProtocolSegment[];
   artefacts?: { masked_fraction: number; spans: Array<{ start_sec: number; end_sec: number; reason: string }> };
-  onSeek?: (timeSec: number) => void;
+  onSeek?: SeekHandler;
 }
 
 const KIND_HINT: Record<string, string> = {
@@ -330,7 +330,7 @@ export function PhenomenaPanel({
               // The whole row seeks. Keyboard users get the same via the time button below, so
               // the row itself stays a plain <li> rather than nesting the verdict buttons
               // inside an interactive element.
-              onClick={() => onSeek?.(p.t_start)}
+              onClick={(event) => onSeek?.(p.t_start, { origin: event.currentTarget })}
             >
               <button
                 type="button"
@@ -338,7 +338,9 @@ export function PhenomenaPanel({
                 title="Jump the player here"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onSeek?.(p.t_start);
+                  // The row, not the button: the page keeps the clicked element on screen, and
+                  // a 40 px button pinned to the bottom edge hides the row it belongs to.
+                  onSeek?.(p.t_start, { origin: event.currentTarget.closest("li") });
                 }}
               >
                 {formatTime(p.t_start)}

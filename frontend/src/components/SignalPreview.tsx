@@ -3,7 +3,7 @@ import WaveSurfer from "wavesurfer.js";
 import type { ParsedGsrResult, ParsedGsrSample } from "../utils/gsrParser";
 import { logEvent } from "../utils/logger";
 import type { SummarizedEvent } from "../App";
-import type { HoverTarget, TimelineMarker } from "../App";
+import type { HoverTarget, PlotSelection, TimelineMarker } from "../App";
 import { animateScroll } from "../utils/smoothScroll";
 import { kindColor } from "../utils/phenomenaVisuals";
 
@@ -16,8 +16,26 @@ interface SignalPreviewProps {
   markers?: TimelineMarker[];
   hover?: HoverTarget | null;
   onHover?: (hover: HoverTarget | null) => void;
+  selection?: PlotSelection | null;
   seekRef?: React.MutableRefObject<((time: number) => void) | null>;
+  /** Published so the page can scroll the charts into view without guessing at their offset. */
+  plotSectionRef?: React.MutableRefObject<HTMLElement | null>;
 }
+
+/** The moment or range the other panels are pointing at, drawn on both charts.
+ *
+ * `pinned` distinguishes a click from a hover: a hover is a light touch that follows the pointer,
+ * a click is a decision that has to stay legible after the pointer has moved on. */
+export interface PlotHighlight {
+  timeSec: number;
+  endSec?: number;
+  pinned: boolean;
+}
+
+/** Violet, deliberately outside the phenomenon palette in `phenomenaVisuals.ts` and away from
+    the red playhead: it marks *where you are pointing*, which is neither a phenomenon nor the
+    playback position. */
+const HIGHLIGHT_COLOUR = "#7c3aed";
 
 const DISPLAY_MIN = 1;
 const DISPLAY_MAX = 6.5;
@@ -385,6 +403,72 @@ function Gauge({ value, min, max, baseline }: GaugeProps) {
   );
 }
 
+interface HighlightLayerProps {
+  highlight?: PlotHighlight | null;
+  /** Time (in the same absolute seconds as the samples) to an x coordinate, already clamped. */
+  toX: (timeSec: number) => number;
+  top: number;
+  bottom: number;
+  /** Recording start, so labels read the same as the x-axis ticks. */
+  originSec: number;
+  compact?: boolean;
+}
+
+/** The shaded span, drawn *behind* the trace so it never obscures the signal it describes. */
+function HighlightBand({ highlight, toX, top, bottom, originSec, compact }: HighlightLayerProps) {
+  if (!highlight || highlight.endSec == null || highlight.endSec <= highlight.timeSec) return null;
+  const x1 = toX(highlight.timeSec);
+  const x2 = toX(highlight.endSec);
+  const width = Math.max(1, x2 - x1);
+  const label = `${formatTime(highlight.timeSec - originSec)}–${formatTime(highlight.endSec - originSec)}`;
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={x1}
+        y={top}
+        width={width}
+        height={bottom - top}
+        fill={HIGHLIGHT_COLOUR}
+        opacity={highlight.pinned ? 0.16 : 0.11}
+      />
+      {/* Both edges drawn: the band alone leaves the exact end ambiguous once it is clipped by
+          the viewport, and "from when to when" is the whole point of showing it. */}
+      <line x1={x1} y1={top} x2={x1} y2={bottom} stroke={HIGHLIGHT_COLOUR} strokeWidth={1.5} opacity={0.75} />
+      <line x1={x2} y1={top} x2={x2} y2={bottom} stroke={HIGHLIGHT_COLOUR} strokeWidth={1.5} opacity={0.75} />
+      {/* Anchored to the left edge rather than centred: in the zoomed detail chart a section is
+          usually wider than the viewport, and a centred label sits off screen. `compact` is the
+          overview, where the top strip already carries the marker diamonds. */}
+      {!compact && width > 58 && (
+        <text x={x1 + 6} y={top + 11} fontSize="10" fontWeight={600} fill={HIGHLIGHT_COLOUR}>
+          {label}
+        </text>
+      )}
+    </g>
+  );
+}
+
+/** The pointed-at moment, drawn on top of everything so it is findable at any zoom. */
+function HighlightCursor({ highlight, toX, top, bottom }: HighlightLayerProps) {
+  if (!highlight) return null;
+  const x = toX(highlight.timeSec);
+  return (
+    <g pointerEvents="none">
+      <line
+        x1={x}
+        y1={top}
+        x2={x}
+        y2={bottom}
+        stroke={HIGHLIGHT_COLOUR}
+        strokeWidth={highlight.pinned ? 2.5 : 2}
+        opacity={0.95}
+      />
+      {/* A downward wedge at the top edge. The dashed phenomenon lines all look alike at a
+          glance; this says which one you are on without having to compare dash weights. */}
+      <polygon points={`${x - 7},${top - 10} ${x + 7},${top - 10} ${x},${top}`} fill={HIGHLIGHT_COLOUR} />
+    </g>
+  );
+}
+
 interface SignalChartProps {
   samples: ParsedGsrSample[];
   currentTime: number;
@@ -395,7 +479,7 @@ interface SignalChartProps {
   events?: SummarizedEvent[];
   markers?: TimelineMarker[];
   onHover?: (hover: HoverTarget | null) => void;
-  highlightTime?: number | null;
+  highlight?: PlotHighlight | null;
 }
 
 function SignalChart({
@@ -408,7 +492,7 @@ function SignalChart({
   events,
   markers,
   onHover,
-  highlightTime
+  highlight
 }: SignalChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartHeight = 220;
@@ -498,10 +582,23 @@ function SignalChart({
     return source.filter((m) => m.timeSec >= startTime && m.timeSec <= endTime);
   }, [markers, events, startTime, endTime]);
 
+  const highlightTime = highlight?.timeSec ?? null;
+  const toX = (t: number) =>
+    clamp(leftPadding + ((t - startTime) / duration) * width, leftPadding, width + leftPadding);
+
   return (
     <div className="signal-chart" ref={containerRef}>
       <svg width={totalWidth} height={chartHeight} role="img" aria-label="GSR timeline">
         <rect x={0} y={0} width={totalWidth} height={chartHeight} fill="#f7fafc" />
+
+        {/* Behind the trace and the markers: the span is context, not content. */}
+        <HighlightBand
+          highlight={highlight}
+          toX={toX}
+          top={topPadding}
+          bottom={chartHeight - bottomPadding}
+          originSec={startTime}
+        />
 
         {/* Y-axis */}
         <line x1={leftPadding} y1={topPadding} x2={leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
@@ -566,6 +663,14 @@ function SignalChart({
         {/* Current position indicator */}
         <line x1={indicatorX} y1={indicatorYTop} x2={indicatorX} y2={indicatorYBottom} stroke="#f44336" strokeWidth={2} strokeDasharray="6 6" />
         <circle cx={indicatorX} cy={currentY} r={5} fill="#f44336" stroke="#fff" strokeWidth={2} />
+
+        <HighlightCursor
+          highlight={highlight}
+          toX={toX}
+          top={topPadding}
+          bottom={chartHeight - bottomPadding}
+          originSec={startTime}
+        />
       </svg>
     </div>
   );
@@ -580,9 +685,20 @@ interface OverviewChartProps {
   events?: SummarizedEvent[];
   markers?: TimelineMarker[];
   onHover?: (hover: HoverTarget | null) => void;
+  highlight?: PlotHighlight | null;
 }
 
-function OverviewChart({ samples, currentTime, min, max, onSeek, events, markers, onHover }: OverviewChartProps) {
+function OverviewChart({
+  samples,
+  currentTime,
+  min,
+  max,
+  onSeek,
+  events,
+  markers,
+  onHover,
+  highlight
+}: OverviewChartProps) {
   const chartWidth = 920;
   const chartHeight = 120;
   const topPadding = 10;
@@ -657,6 +773,13 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events, markers
     return source.filter((m) => m.timeSec >= startTime && m.timeSec <= endTime);
   }, [markers, events, startTime, endTime]);
 
+  const toX = (t: number) =>
+    clamp(
+      leftPadding + ((t - startTime) / duration) * usableWidth,
+      leftPadding,
+      usableWidth + leftPadding
+    );
+
   return (
     <div className="overview-chart">
       <svg
@@ -668,6 +791,18 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events, markers
         style={{ cursor: 'pointer' }}
       >
         <rect x={0} y={0} width={chartWidth} height={chartHeight} fill="#f0f4f7" />
+
+        {/* The overview is where a narrative section's span is actually legible: the whole
+            session is on screen, so the shaded band shows the proportion of the sitting it
+            covers rather than just a stretch wider than the viewport. */}
+        <HighlightBand
+          highlight={highlight}
+          toX={toX}
+          top={topPadding}
+          bottom={chartHeight - bottomPadding}
+          originSec={startTime}
+          compact
+        />
 
         {/* Y-axis */}
         <line x1={leftPadding} y1={topPadding} x2={leftPadding} y2={chartHeight - bottomPadding} stroke="#333" strokeWidth={1} />
@@ -733,6 +868,14 @@ function OverviewChart({ samples, currentTime, min, max, onSeek, events, markers
           strokeWidth={3}
           opacity={0.7}
         />
+
+        <HighlightCursor
+          highlight={highlight}
+          toX={toX}
+          top={topPadding}
+          bottom={chartHeight - bottomPadding}
+          originSec={startTime}
+        />
       </svg>
     </div>
   );
@@ -747,7 +890,9 @@ export function SignalPreview({
   markers,
   hover,
   onHover,
-  seekRef
+  selection,
+  seekRef,
+  plotSectionRef
 }: SignalPreviewProps) {
   const waveformRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
@@ -867,6 +1012,14 @@ export function SignalPreview({
     const clamped = Math.max(0, Math.min(target, wrap.scrollWidth - wrap.clientWidth));
     return animateScroll(wrap, { left: clamped });
   }, [hover, pxPerSecond, data.startTimeSec]);
+
+  // A live hover wins over the last click: the pointer is the more immediate intent, and the
+  // click stays marked again as soon as the pointer leaves.
+  const highlight = useMemo<PlotHighlight | null>(() => {
+    if (hover) return { timeSec: hover.timeSec, endSec: hover.endSec, pinned: false };
+    if (selection) return { timeSec: selection.timeSec, endSec: selection.endSec, pinned: true };
+    return null;
+  }, [hover, selection]);
 
   const seekTo = (time: number) => {
     const ws = wsRef.current;
@@ -1101,7 +1254,7 @@ export function SignalPreview({
         </div>
       </div>
 
-      <div className="overview-section">
+      <div className="overview-section" ref={(node) => { if (plotSectionRef) plotSectionRef.current = node; }}>
         <h3 className="section-title">Full Recording Overview</h3>
         <p className="section-description">
           Click anywhere on the timeline below to jump to that point. The red line shows your current position.
@@ -1116,6 +1269,7 @@ export function SignalPreview({
           events={events}
           markers={markers}
           onHover={onHover}
+          highlight={highlight}
         />
       </div>
 
@@ -1164,7 +1318,7 @@ export function SignalPreview({
             events={events}
             markers={markers}
             onHover={onHover}
-            highlightTime={hover ? hover.timeSec : null}
+            highlight={highlight}
           />
         </div>
       </div>

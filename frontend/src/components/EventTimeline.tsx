@@ -1,11 +1,11 @@
 import { ResizablePane } from "./ResizablePane";
-import type { SummarizedEvent } from "../App";
+import type { SeekHandler, SummarizedEvent } from "../App";
 
 interface EventTimelineProps {
   events: SummarizedEvent[];
   isLoading: boolean;
   audioDuration?: number;
-  onSeek?: (time: number) => void;
+  onSeek?: SeekHandler;
   /** From /api/health, so a missing summary can name its real cause. */
   summarizerEnabled?: boolean;
   summarizerStatus?: string;
@@ -155,7 +155,7 @@ export function EventTimeline({
             className="timeline-event-card"
             // The whole card seeks, summary text included — the summary is usually what you are
             // reading when you decide you want to hear that moment.
-            onClick={onSeek ? () => onSeek(event.time_sec) : undefined}
+            onClick={onSeek ? (click) => onSeek(event.time_sec, { origin: click.currentTarget }) : undefined}
           >
             <div className="timeline-row">
               <div className="timeline-row-left">
@@ -175,7 +175,8 @@ export function EventTimeline({
                     className="btn-small btn-jump"
                     onClick={(clickEvent) => {
                       clickEvent.stopPropagation();
-                      onSeek(event.time_sec);
+                      // The card, not the button — see PhenomenaPanel for why.
+                      onSeek(event.time_sec, { origin: clickEvent.currentTarget.closest("li") });
                     }}
                     title={`Jump to ${formatTimeSec(event.time_sec)}`}
                   >

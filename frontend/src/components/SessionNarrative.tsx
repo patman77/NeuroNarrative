@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { HoverTarget, NarrativeSection } from "../App";
+import type { HoverTarget, NarrativeSection, SeekHandler } from "../App";
 import { scrollChildIntoView } from "../utils/smoothScroll";
 
 /**
@@ -16,7 +16,7 @@ interface Props {
   markdown?: string;
   hover: HoverTarget | null;
   onHover: (hover: HoverTarget | null) => void;
-  onSeek?: (timeSec: number) => void;
+  onSeek?: SeekHandler;
 }
 
 function formatClock(seconds: number): string {
@@ -104,7 +104,18 @@ export function SessionNarrative({ sections, markdown, hover, onHover, onSeek }:
               onMouseEnter={() =>
                 onHover({ timeSec: section.start_sec, endSec: section.end_sec, source: "narrative" })
               }
-              onClick={onSeek ? () => onSeek(section.start_sec) : undefined}
+              // `endSec` is what makes the plots shade the section's whole span rather than
+              // marking a single line — the question a section heading raises is "from when to
+              // when", and a lone marker at the start does not answer it.
+              onClick={
+                onSeek
+                  ? (click) =>
+                      onSeek(section.start_sec, {
+                        origin: click.currentTarget,
+                        endSec: section.end_sec
+                      })
+                  : undefined
+              }
             >
               <div className="narrative-heading">
                 <button
@@ -113,7 +124,10 @@ export function SessionNarrative({ sections, markdown, hover, onHover, onSeek }:
                   title="Jump the player here"
                   onClick={(event) => {
                     event.stopPropagation();
-                    onSeek?.(section.start_sec);
+                    onSeek?.(section.start_sec, {
+                      origin: event.currentTarget.closest("li"),
+                      endSec: section.end_sec
+                    });
                   }}
                 >
                   {range}
