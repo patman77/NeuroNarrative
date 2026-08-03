@@ -692,6 +692,27 @@ details p {
   margin: 0 0 0.8rem 0;
 }
 
+/* Set apart from the zoom buttons: it changes what the tooltips say, not what the chart shows. */
+.transcript-window {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.transcript-window input {
+  width: 3.6rem;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.82rem;
+  background: rgba(15, 23, 42, 0.8);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.4rem;
+}
+
 .zoom-button {
   min-width: 2.4rem;
   padding: 0.6rem 0.8rem;

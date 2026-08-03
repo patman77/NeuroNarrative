@@ -46,7 +46,7 @@ so every figure the app prints is a count rather than a measured accuracy — se
 | Session export: CSV, JSON, SRT, PDF | ✅ |
 | Backend health status pill with auto-retry | ✅ |
 | Backend unit tests (pytest, 198 passing) | ✅ |
-| Frontend E2E tests (Playwright, 21 passing) | ✅ |
+| Frontend E2E tests (Playwright, 23 passing) | ✅ |
 | ESLint config (TypeScript + React rules) | ✅ |
 | CI: GitHub Actions (frontend lint + typecheck + build, backend pytest) | ✅ |
 | Speaker diarisation | ❌ deliberately not done — the corpus is solo, so there is nothing to separate; cue matching carries the role signal instead |

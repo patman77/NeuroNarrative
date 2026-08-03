@@ -47,6 +47,15 @@ function analysisResult() {
     };
   });
 
+  // One word per second, so a marker's tooltip excerpt is predictable from its timestamp and a
+  // wider window demonstrably picks up more of them. The captured response has no transcript —
+  // the synthetic audio is a tone.
+  result.transcript = Array.from({ length: Math.floor(duration) }, (_, i) => ({
+    text: `w${i}`,
+    start: i,
+    end: i + 0.4
+  }));
+
   const events = [...result.events];
   for (let copy = 1; copy <= 4; copy++) {
     for (const e of result.events) {
@@ -371,4 +380,41 @@ test('a marker already on screen in the detail chart does not move it', async ({
   await page.waitForTimeout(900);
   const after = await scroller.evaluate((el) => el.scrollLeft);
   expect(Math.abs(after - before)).toBeLessThan(4);
+});
+
+test('a marker tooltip carries the speech around it, over an adjustable window', async ({ page }) => {
+  await runAnalysis(page);
+
+  // The first phenomenon sits at ~1.07 s, and the fixture has one word per second, so a ±3 s
+  // window covers w0 through w4.
+  const title = page.locator('.signal-chart g title').first();
+  const atThree = (await title.textContent()) ?? '';
+  expect(atThree).toContain('BE @');
+  expect(atThree).toContain('±3 s:');
+  expect(atThree).toContain('w1 w2 w3');
+  // The window is a window, not a prefix: something well outside it must not be in there.
+  expect(atThree).not.toContain('w20');
+
+  const input = page.getByLabel('Transcript window in seconds');
+  await expect(input).toHaveValue('3');
+  await input.fill('10');
+  await input.blur();
+
+  const atTen = (await page.locator('.signal-chart g title').first().textContent()) ?? '';
+  expect(atTen).toContain('±10 s:');
+  expect(atTen).toContain('w10');
+  expect(atTen.length).toBeGreaterThan(atThree.length);
+});
+
+test('a marker with nothing said near it says so', async ({ page }) => {
+  await runAnalysis(page);
+
+  const input = page.getByLabel('Transcript window in seconds');
+  // Zero seconds: only a word overlapping the instant itself counts, and the fixture's words are
+  // 0.4 s long with 0.6 s gaps, so most markers fall in a gap.
+  await input.fill('0');
+  await input.blur();
+
+  const titles = await page.locator('.signal-chart g title').allTextContents();
+  expect(titles.some((t) => t.includes('no speech within ±0 s'))).toBe(true);
 });

@@ -74,6 +74,7 @@ lives in `docs/phenomena-detection-design.md` §11.
 | Marked position in both plots | ✅ | Hover and click draw a violet cursor in the overview and detail charts; a click's mark outlives the pointer. A narrative section shades its whole span semi-transparently in both |
 | Click keeps the clicked row on screen | ✅ | `revealPlot` anchors on the charts and lands the row just above the bottom edge instead of scrolling the page to the top of the preview card |
 | A section highlights its whole cluster | ✅ | Pointing at a narrative section marks **every** filtered phenomenon inside it, not just the first; the first is still where the list scrolls to |
+| Marker tooltip carries the transcript | ✅ | Resting on a marker shows kind, time and what was said within ±n s (`excerptAround`, default 3 s, adjustable beside the detail chart's zoom buttons). Words that *overlap* the window count; "no speech within ±n s" is printed rather than left blank, since silence is the common case in a solo session |
 | Speech-bubble labels in both plots | ✅ | Kind and A-magnitude for what is pointed at — the whole section, or one phenomenon from the list. `packBubbles` lane-packs them so none overlaps; overflow is reported as "+N more". Legend above each chart, permanently reserved so the charts never shift |
 | Switchable workspace layout | ✅ | **Stacked** pins the charts above the lists by sticking the card at a *negative* offset, so the gauge stays above them in the card and scrolls out of view; the lists are capped to what the window has left. Gated on ≥1000 px window height, below which a 790 px plot would cover everything. **Split** gives the plot its own column beside the lists ≥1180 px. Header toggle, kept in localStorage. Page is fluid to 1800 px and the overview chart follows its container instead of a fixed 920 px |
 | **Stage 7** — HSMM session states (Abflachung, ÜBZ, EE, zähe Sitzung) | ❌ | Needs labels |
@@ -148,7 +149,7 @@ lives in `docs/phenomena-detection-design.md` §11.
 | Desktop build: Windows / Linux | ❌ | Spec is cross-platform apart from the macOS `BUNDLE` step; untried |
 | Code signing / notarization | ❌ | Unsigned; Gatekeeper blocks a downloaded copy |
 | Native window (not a browser tab) | ✅ | pywebview → system WKWebView. +4 MB, no Node, no second binary to sign. Electron/Tauri not needed. |
-| End-to-end tests (Playwright) | ✅ | `preview_flow.spec.ts` (11) + `linked_view.spec.ts` (10) – 21 tests, all pass. Needs dev server on **:5175** (config `baseURL`) and `npx playwright install chromium`. The linked-view specs stub the backend from a captured response, so they need no analysis run. Not run in CI. |
+| End-to-end tests (Playwright) | ✅ | `preview_flow.spec.ts` (11) + `linked_view.spec.ts` (12) – 23 tests, all pass. Needs dev server on **:5175** (config `baseURL`) and `npx playwright install chromium`. The linked-view specs stub the backend from a captured response, so they need no analysis run. Not run in CI. |
 | Backend unit tests | ✅ | 13 modules under `backend/tests/` – 198 tests; skip gracefully when deps absent |
 | ESLint configuration | ✅ | `frontend/.eslintrc.cjs` – ESLint 8 legacy format, `@typescript-eslint` + react + react-hooks + prettier. `npm run lint` is clean. |
 | CI/CD pipeline | ✅ | `.github/workflows/ci.yml` – frontend lint + typecheck + build, backend pytest, parallel jobs |

@@ -23,6 +23,11 @@ interface SignalPreviewProps {
   /** How the card is built, so the stacked layout can pin the charts without reordering it.
       `offsetPx` is the setup above them (gauge, metrics, waveform); `heightPx` is the charts. */
   onPlotMetrics?: (metrics: { offsetPx: number; heightPx: number }) => void;
+  /** Seconds of speech either side of a marker in its tooltip. The excerpt itself is built in
+      App, which holds the transcript; this component only owns the control. */
+  transcriptWindowSec?: number;
+  maxTranscriptWindowSec?: number;
+  onTranscriptWindowChange?: (seconds: number) => void;
 }
 
 /** The moment or range the other panels are pointing at, drawn on both charts.
@@ -1135,7 +1140,10 @@ export function SignalPreview({
   selection,
   seekRef,
   plotSectionRef,
-  onPlotMetrics
+  onPlotMetrics,
+  transcriptWindowSec,
+  maxTranscriptWindowSec = 60,
+  onTranscriptWindowChange
 }: SignalPreviewProps) {
   const cardRef = useRef<HTMLElement | null>(null);
   const plotStackRef = useRef<HTMLDivElement | null>(null);
@@ -1628,6 +1636,30 @@ export function SignalPreview({
           <button type="button" onClick={fitPage} className="nav-button" title="Fit entire recording (F)">
             Fit page
           </button>
+          {/* Sits with the charts because that is where its effect is visible — the tooltip you
+              get by resting on a marker, in both charts. */}
+          {transcriptWindowSec != null && onTranscriptWindowChange && (
+            <label
+              className="transcript-window"
+              title="Seconds of speech either side of a marker, shown in the tooltip when you rest the pointer on it. Widen it around a silent stretch; narrow it in a dense one to stay specific."
+            >
+              Transcript ±
+              <input
+                type="number"
+                min={0}
+                max={maxTranscriptWindowSec}
+                step={1}
+                value={transcriptWindowSec}
+                aria-label="Transcript window in seconds"
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (!Number.isFinite(value)) return;
+                  onTranscriptWindowChange(clamp(Math.round(value), 0, maxTranscriptWindowSec));
+                }}
+              />
+              s
+            </label>
+          )}
         </div>
         <div className="detail-chart-scroller" ref={detailWrapRef}>
           <SignalChart

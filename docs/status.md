@@ -12,7 +12,7 @@ and the report).
 ## What exists
 
 Stages 1–6 of the detection roadmap, plus the session narrative and the review UI. Exercised by
-**198 backend tests** and **21 Playwright E2E tests**.
+**198 backend tests** and **23 Playwright E2E tests**.
 
 ### Signal
 
@@ -36,6 +36,7 @@ Stages 1–6 of the detection roadmap, plus the session narrative and the review
 | Cross-panel linking — filters drive the timeline markings; hovering anywhere highlights and scrolls everywhere else, including the detail chart travelling to a marker pointed at in the overview | `App.tsx`, `utils/smoothScroll.ts` |
 | Marked position in both charts — violet cursor for the hovered or clicked moment; a narrative section shades its whole span | `SignalPreview.tsx` |
 | Speech-bubble labels — kind and A-magnitude for what is being pointed at, packed into lanes so none overlaps | `SignalPreview.tsx` |
+| Marker tooltips carrying the speech around a phenomenon, over an adjustable ±n s window (default 3) | `App.tsx`, `SignalPreview.tsx` |
 | Resizable, scrollable panes for detected events and the transcript | `ResizablePane.tsx` |
 | Two workspace layouts — plot pinned above the lists, or in its own column beside them; switched from the header, remembered | `App.tsx`, `styles.css` |
 

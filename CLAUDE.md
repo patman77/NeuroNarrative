@@ -190,6 +190,15 @@ Scrolling uses `utils/smoothScroll.ts`, not `scrollIntoView({behavior:"smooth"})
 the browser picks and grows with distance — across a 54-minute timeline that ran long enough for
 a second hover to arrive mid-flight. Ours eases in and out and is capped at 2 s.
 
+Resting on a marker gives the browser's own delayed tooltip, from the SVG `<title>`. It carries
+the kind and time **and what was said around it** — `excerptAround` in `App.tsx`, ±`n` seconds,
+default 3, adjustable from the control beside the detail chart's zoom buttons. The label is built
+in `App` because that is where the transcript lives; `SignalPreview` owns only the control. A word
+counts when it *overlaps* the window rather than starting inside it, so a long word spanning the
+moment is not dropped, and "no speech within ±n s" is printed rather than left blank — in a solo
+session silence is the common case and a real answer, not a gap. Capped at 400 characters: a
+native tooltip is not a reading surface.
+
 The **two charts are separate hover sources**, `plot` (detail) and `overview`, not one "plot".
 The detail chart ignores hovers from its own markers, or it would drag itself out from under the
 pointer — but a hover in the overview is precisely when it *should* travel, since the moment

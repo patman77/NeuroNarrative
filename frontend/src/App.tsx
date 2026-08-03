@@ -17,6 +17,42 @@ import { animateScroll } from "./utils/smoothScroll";
 /** Breathing room under a clicked row when the page scrolls the charts into view. */
 const REVEAL_BOTTOM_MARGIN_PX = 12;
 
+/** Seconds either side of a phenomenon whose speech goes in its tooltip. Three is enough to
+    catch the cue that provoked a deflection without pulling in the next exercise. */
+const DEFAULT_TRANSCRIPT_WINDOW_SEC = 3;
+const MAX_TRANSCRIPT_WINDOW_SEC = 60;
+/** A native tooltip is not a reading surface; past this it stops being glanceable. */
+const MAX_EXCERPT_CHARS = 400;
+
+/**
+ * What was said around `timeSec`, for the marker tooltip.
+ *
+ * A word counts when it *overlaps* the window rather than starting inside it, so a long word
+ * spanning the moment is not dropped. Returns null when nothing was said — which is the common
+ * case and worth stating in the tooltip, since these sessions are mostly silent by design.
+ */
+function excerptAround(
+  transcript: TranscriptWord[],
+  timeSec: number,
+  windowSec: number
+): string | null {
+  if (!transcript.length) return null;
+  const from = timeSec - windowSec;
+  const to = timeSec + windowSec;
+  const words: string[] = [];
+  for (const word of transcript) {
+    if (word.start == null || word.end == null) continue;
+    if (word.end < from || word.start > to) continue;
+    const text = word.text.trim();
+    if (text) words.push(text);
+  }
+  if (!words.length) return null;
+  const joined = words.join(" ");
+  return joined.length > MAX_EXCERPT_CHARS
+    ? `${joined.slice(0, MAX_EXCERPT_CHARS - 1).trimEnd()}…`
+    : joined;
+}
+
 export interface TranscriptWord {
   text: string;
   start: number | null;
@@ -310,6 +346,10 @@ function App() {
   // and the charts stop at the window edge — and the lists below are then capped to whatever the
   // window has left, rather than to a fixed fraction of it that ignores the pinned plot.
   const [plotMetrics, setPlotMetrics] = useState({ offsetPx: 0, heightPx: 0 });
+  // How much speech either side of a marker its tooltip carries. Adjustable, because the right
+  // amount depends on the passage: a dense stretch needs a tight window to stay specific, and
+  // around a silent one you have to reach further to find anything at all.
+  const [transcriptWindowSec, setTranscriptWindowSec] = useState(DEFAULT_TRANSCRIPT_WINDOW_SEC);
   const [layout, setLayout] = useState<WorkspaceLayout>(() =>
     localStorage.getItem(LAYOUT_KEY) === "split" ? "split" : "stacked"
   );
@@ -593,16 +633,26 @@ function App() {
   const timelineMarkers = useMemo<TimelineMarker[] | undefined>(() => {
     const phenomena = analyzeMutation.data?.phenomena ?? [];
     if (!phenomena.length) return undefined;
+    const words = analyzeMutation.data?.transcript ?? [];
     return phenomena
       .filter((p) => !hiddenKinds.has(p.kind))
-      .map((p) => ({
-        id: p.id,
-        timeSec: p.t_start,
-        kind: p.kind,
-        label: `${p.kind} @ ${p.t_start.toFixed(1)}s`,
-        amplitudeA: p.amplitude_a ?? null
-      }));
-  }, [analyzeMutation.data, hiddenKinds]);
+      .map((p) => {
+        const excerpt = excerptAround(words, p.t_start, transcriptWindowSec);
+        // The tooltip is the one place the signal and the speech meet directly: you point at a
+        // deflection and read what was being said when it happened. "Nothing was said" is a real
+        // answer here, not a gap — a solo session is quiet most of the time.
+        const spoken = words.length
+          ? excerpt ?? `no speech within ±${transcriptWindowSec} s`
+          : "no transcript";
+        return {
+          id: p.id,
+          timeSec: p.t_start,
+          kind: p.kind,
+          label: `${p.kind} @ ${p.t_start.toFixed(1)}s\n±${transcriptWindowSec} s: ${spoken}`,
+          amplitudeA: p.amplitude_a ?? null
+        };
+      });
+  }, [analyzeMutation.data, hiddenKinds, transcriptWindowSec]);
 
   const toggleKind = useCallback((kind: string) => {
     setHiddenKinds((previous) => {
@@ -784,6 +834,9 @@ function App() {
             seekRef={seekRequestRef}
             plotSectionRef={plotSectionRef}
             onPlotMetrics={setPlotMetrics}
+            transcriptWindowSec={transcriptWindowSec}
+            maxTranscriptWindowSec={MAX_TRANSCRIPT_WINDOW_SEC}
+            onTranscriptWindowChange={setTranscriptWindowSec}
           />
         ) : (
           <section className="card preview-placeholder">
