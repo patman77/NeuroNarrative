@@ -153,6 +153,12 @@ no `v*` tag has been pushed, so no release exists.
 Artifact sizes from that run, with the ASR model bundled: macOS arm64 605 MiB, Linux 616 MiB,
 Windows 990 MiB. Windows being ~60 % larger than Linux is unexplained.
 
+**The Linux build opened a browser tab rather than a window**, because it had no GUI toolkit and
+pywebview falls back silently. It now bundles PySide6/QtWebEngine and asks for the Qt backend by
+name, with a CI step that starts Xvfb and asserts an X window appears. **None of that has run
+yet** — it cannot be exercised on the development machine — so the Linux window is a claim, not
+a measurement, until the next workflow run. The artifact will also grow by several hundred MB.
+
 ---
 
 ## Next, in order

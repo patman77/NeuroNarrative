@@ -415,8 +415,22 @@ change before committing to a tag.
   PyInstaller puts collected data under `Contents/Frameworks`; `build_desktop.sh` writes it
   after the bundle exists. Both paths compute the year at build time, so they cannot drift apart.
 - Nothing is signed or notarized, and the release notes say so along with the Gatekeeper and
-  SmartScreen workarounds. On Linux there is no bundled GUI toolkit, so `_show_window` fails and
-  the app falls back to the system browser — which it is written to do.
+  SmartScreen workarounds.
+
+**Linux ships its own browser engine.** macOS and Windows lend pywebview a system webview
+(WKWebView / WebView2); Linux has nothing to borrow. pywebview's GTK backend needs PyGObject
+*and* a `webkit2gtk` the user may not have, and when it cannot find one it **opens a browser tab
+and logs a warning rather than failing** — which is how the Linux build shipped as a browser app
+without anyone noticing. So the Linux extra pulls in **PySide6**, whose QtWebEngine is a whole
+engine in the bundle, and `_show_window` names `gui="qt"` explicitly on Linux instead of letting
+pywebview's auto-detection try GTK first. It costs a few hundred MB; it is the price of not
+depending on what the desktop happens to provide. Qt still links against the system's X
+libraries (libxcb, libegl, libnss3 …), which the runner image lacks and the workflow installs.
+
+Because that failure mode is silent, the Linux job has a **window check**: it starts Xvfb on a
+known display (`:99` by hand — `xvfb-run -a` picks a number it does not tell you, and xdotool has
+to query the right one), launches the app *without* `NEURONARRATIVE_NO_BROWSER`, and asserts an
+X client named NeuroNarrative exists. Absence of the warning alone would not be evidence.
 
 ### API base URL vs. proxy
 

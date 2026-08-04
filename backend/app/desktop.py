@@ -166,6 +166,12 @@ def _show_window(url: str) -> bool:
         logger.warning("pywebview not installed; falling back to the system browser.")
         return False
 
+    # On Linux, name the backend rather than letting pywebview guess. Its auto-detection tries
+    # GTK first, which needs PyGObject and a webkit2gtk the machine may not have; when that
+    # fails it quietly opens a browser tab instead of a window. The bundle ships Qt precisely so
+    # it does not have to depend on what the desktop happens to provide.
+    gui = "qt" if sys.platform.startswith("linux") else None
+
     try:
         webview.create_window(
             "NeuroNarrative",
@@ -175,7 +181,7 @@ def _show_window(url: str) -> bool:
             min_size=(1024, 700),
             text_select=True,
         )
-        webview.start()
+        webview.start(gui=gui)
         return True
     except Exception as exc:  # pragma: no cover - platform/GUI specific
         logger.warning("Could not open a native window (%s); falling back to browser.", exc)

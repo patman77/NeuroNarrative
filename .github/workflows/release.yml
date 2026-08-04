@@ -78,6 +78,17 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Qt links against the system's X libraries even though it ships its own engine, and the
+      # runner image has none of them. xvfb and xdotool are for the window check below.
+      - name: Install Qt runtime libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xdotool libegl1 libdbus-1-3 libnss3 libasound2 \
+            libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0
+
       - name: Install backend and packaging dependencies
         working-directory: backend
         # `gpu` carries an environment marker for darwin/arm64, so it is a no-op on the
@@ -137,6 +148,45 @@ jobs:
           # The frozen bundle serving its own SPA is the part most likely to break: the
           # frontend is bundled data, and a path mistake only shows up here.
           curl -fsS "$URL/" | grep -q '<title>' || { echo "index.html not served"; cat app.log; exit 1; }
+
+      # The Linux build exists to open a *window*. Without this the bundle would happily ship
+      # having only proved it can serve HTTP, and pywebview's failure mode is silent: it opens
+      # a browser tab and logs a warning rather than erroring out.
+      - name: Check a native window opens (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          export QT_QPA_PLATFORM=xcb
+          # Xvfb has no GPU and CI has no user namespaces for Chromium's sandbox.
+          export QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu"
+
+          # Xvfb started by hand rather than through `xvfb-run -a`, which picks a free display
+          # number and does not tell us which — and xdotool has to query the right one.
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1600x1000x24 &
+          XVFB_PID=$!
+          sleep 2
+
+          dist/NeuroNarrative/NeuroNarrative > window.log 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" "$XVFB_PID" 2>/dev/null || true' EXIT
+
+          FOUND=""
+          for _ in $(seq 1 60); do
+            if grep -qE "falling back to browser|Could not open a native window" window.log; then
+              echo "pywebview fell back instead of opening a window:"
+              cat window.log
+              exit 1
+            fi
+            # A positive assertion, not merely the absence of the warning: an X client with our
+            # window title has to exist.
+            if xdotool search --name NeuroNarrative >/dev/null 2>&1; then FOUND=1; break; fi
+            if pgrep -f QtWebEngineProcess >/dev/null 2>&1; then FOUND=1; break; fi
+            kill -0 "$APP_PID" 2>/dev/null || { echo "the app exited"; cat window.log; exit 1; }
+            sleep 1
+          done
+          [ -n "$FOUND" ] || { echo "no window appeared"; cat window.log; exit 1; }
+          echo "a native window is up"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'

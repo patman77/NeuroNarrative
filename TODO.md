@@ -149,6 +149,7 @@ lives in `docs/phenomena-detection-design.md` §11.
 |------|--------|-------|
 | PyInstaller desktop build (macOS) | ✅ | `packaging/neuronarrative.spec` + `scripts/build_desktop.sh` → `NeuroNarrative.app`. Smoke-tested offline with no venv. |
 | Desktop build: Windows / Linux | ✅ | Built by `.github/workflows/release.yml`. First manual run 2026-08-03: **both built and passed the boot check** — 616 MiB Linux, 990 MiB Windows, with the model bundled. No per-platform PyInstaller fixes were needed |
+| Linux: native window instead of a browser tab | 🔧 | The Linux bundle had no GUI toolkit, so pywebview silently opened a browser tab. Now ships **PySide6/QtWebEngine** and names `gui="qt"` explicitly; a CI step under Xvfb asserts an X window actually appears. **Untested** — it cannot be built or run on the development machine, so the next workflow run is the first real evidence. Expect the Linux artifact to grow by several hundred MB |
 | Desktop build: macOS Intel | 🔧 | The job asked for the retired `macos-13` label, was never assigned a runner and sat queued indefinitely. Now `macos-15-intel` — the last x86_64 macOS image GitHub will offer, retiring August 2027 — but **that path has not been exercised yet** |
 | Code signing / notarization | ❌ | Unsigned; Gatekeeper blocks a downloaded copy |
 | Native window (not a browser tab) | ✅ | pywebview → system WKWebView. +4 MB, no Node, no second binary to sign. Electron/Tauri not needed. |

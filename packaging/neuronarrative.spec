@@ -74,7 +74,21 @@ if sys.platform == "darwin":
 elif sys.platform == "win32":
     hiddenimports += ["webview.platforms.edgechromium", "webview.platforms.winforms"]
 else:
-    hiddenimports += ["webview.platforms.gtk", "webview.platforms.qt"]
+    # Linux: Qt only. The GTK backend would need PyGObject plus a system webkit2gtk, and
+    # listing it here only produces analysis warnings for a path the app no longer takes —
+    # `_show_window` names "qt" explicitly on Linux.
+    hiddenimports += ["webview.platforms.qt", "qtpy"]
+    # QtWebEngine is the actual browser engine and is reached through qtpy's indirection, so
+    # static analysis cannot see it. PyInstaller's own PySide6 hooks then bring along the
+    # QtWebEngineProcess helper, its locales and its resources — the pieces whose absence
+    # produces a window that opens and stays blank.
+    hiddenimports += [
+        "PySide6.QtWebEngineCore",
+        "PySide6.QtWebEngineWidgets",
+        "PySide6.QtWebChannel",
+        "PySide6.QtNetwork",
+        "PySide6.QtPrintSupport",
+    ]
 
 # scipy.signal.resample_poly and pandas' CSV reader both load extension modules lazily.
 datas += collect_data_files("scipy", includes=["**/*.pyi"])

@@ -55,6 +55,7 @@ so every figure the app prints is a count rather than a measured accuracy — se
 | EEG ingestion | ❌ not started |
 | Desktop app: frozen macOS `.app` (PyInstaller), native window, offline-capable | ✅ |
 | Desktop app: Windows / Linux builds via GitHub Actions on a `v*` tag | ✅ built and boot-checked; macOS Intel path untried |
+| Desktop app: native window on Linux (PySide6/QtWebEngine) | 🔧 implemented, not yet exercised in CI |
 | Desktop app: code signing / notarization | ❌ not started — Gatekeeper and SmartScreen will object |
 | Build version shown in the header and About box, with copyright | ✅ |
 
@@ -392,8 +393,12 @@ Each platform is gated on a boot check — the bundle is launched headless and m
 which is how to test a packaging change before committing to a tag.
 
 The builds are **not code-signed**: macOS Gatekeeper and Windows SmartScreen will both
-object, and the release notes explain how to get past them. On Linux the app has no bundled
-GUI toolkit and opens your default browser instead of a native window.
+object, and the release notes explain how to get past them.
+
+On Linux the bundle carries its own browser engine (PySide6/QtWebEngine), because there is no
+system webview to borrow the way macOS and Windows have one. That makes the download several
+hundred MB larger, and Qt still needs the usual X libraries present (`libxcb-*`, `libegl1`,
+`libnss3`); without a GUI toolkit the app used to fall back to opening a browser tab.
 
 ---
 
