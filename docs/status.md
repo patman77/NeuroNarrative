@@ -137,11 +137,20 @@ discrimination is L3 work that needs labels.
 far inside the 1 576–3 234 spread the `temperature=0.0` fix eliminated, but the earlier claim of
 run-to-run identity does not hold across days.
 
-**The release workflow has never run.** `.github/workflows/release.yml` builds the desktop app for
-macOS (arm64 + Intel), Windows and Linux on a `v*` tag, and each platform is gated on a boot
-check — but no tag has been pushed, so only the macOS arm64 path has ever been exercised, and
-that locally. Windows and Linux bundles remain unproven: ctranslate2 and onnxruntime ship native
-libraries that often need per-platform PyInstaller fixes. Expect the first tag to need a second.
+**No release has been published yet.** `.github/workflows/release.yml` has run once manually
+(2026-08-03): **Linux, Windows and macOS arm64 all built and passed their boot check** — the
+frozen bundle starts, answers `/api/health` and serves the SPA on each. That is better than
+expected; the worry had been that ctranslate2 and onnxruntime would need per-platform PyInstaller
+fixes, and they did not.
+
+The macOS Intel job did not run: it asked for `macos-13`, which GitHub retired in December 2025,
+so it was never assigned a runner and sat queued — it did not fail, which is worse, because the
+run stayed "in progress" for hours and its logs stayed unavailable. The label is now
+`macos-15-intel` and **that path is still unexercised**. Nothing has been signed or notarized, and
+no `v*` tag has been pushed, so no release exists.
+
+Artifact sizes from that run, with the ASR model bundled: macOS arm64 605 MiB, Linux 616 MiB,
+Windows 990 MiB. Windows being ~60 % larger than Linux is unexplained.
 
 ---
 

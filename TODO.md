@@ -146,7 +146,8 @@ lives in `docs/phenomena-detection-design.md` §11.
 | Item | Status | Notes |
 |------|--------|-------|
 | PyInstaller desktop build (macOS) | ✅ | `packaging/neuronarrative.spec` + `scripts/build_desktop.sh` → `NeuroNarrative.app`. Smoke-tested offline with no venv. |
-| Desktop build: Windows / Linux | 🔧 | Built by `.github/workflows/release.yml` on every `v*` tag (macOS arm64 + Intel, Windows x64, Linux x86_64), each gated on a boot check. **Not yet run** — the workflow has never fired, so Windows and Linux remain unproven in practice |
+| Desktop build: Windows / Linux | ✅ | Built by `.github/workflows/release.yml`. First manual run 2026-08-03: **both built and passed the boot check** — 616 MiB Linux, 990 MiB Windows, with the model bundled. No per-platform PyInstaller fixes were needed |
+| Desktop build: macOS Intel | 🔧 | The job asked for the retired `macos-13` label, was never assigned a runner and sat queued indefinitely. Now `macos-15-intel` — the last x86_64 macOS image GitHub will offer, retiring August 2027 — but **that path has not been exercised yet** |
 | Code signing / notarization | ❌ | Unsigned; Gatekeeper blocks a downloaded copy |
 | Native window (not a browser tab) | ✅ | pywebview → system WKWebView. +4 MB, no Node, no second binary to sign. Electron/Tauri not needed. |
 | End-to-end tests (Playwright) | ✅ | `preview_flow.spec.ts` (11) + `linked_view.spec.ts` (12) – 23 tests, all pass. Needs dev server on **:5175** (config `baseURL`) and `npx playwright install chromium`. The linked-view specs stub the backend from a captured response, so they need no analysis run. Not run in CI. |
@@ -312,8 +313,11 @@ HTML file input), app icon (`icon=None` in the spec today), auto-update.
 
 - **Signing is calendar time, not just effort**: notarization round-trips and certificate
   issuance can take days of waiting.
-- **Windows/Linux are unproven.** The release workflow builds them, but nobody has run one
-  yet; ctranslate2/onnxruntime ship native libs that often need per-platform hook fixes.
+- ~~Windows/Linux are unproven.~~ Resolved 2026-08-03: both built and booted on the first
+  manual run, with no per-platform hook fixes needed. macOS Intel is the one still untried.
+- **A retired runner label does not fail, it queues.** `macos-13` held a whole run "in
+  progress" for hours and made its logs unavailable. Job timeouts do not help — they only
+  start counting once a runner is assigned.
 - **CI artifact size**: ~550 MB per platform on Apple silicon, plus the model when bundled.
   Well inside GitHub's 2 GB per-asset limit, but a slow download for users.
 - Resolved: PyInstaller + native ML wheels was the big unknown, and dropping torch in phase 0

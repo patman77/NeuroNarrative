@@ -32,6 +32,9 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    # A build that has actually started takes 3-5 minutes; anything approaching this is
+    # wedged, and a wedged job holds the whole run — and its logs — hostage.
+    timeout-minutes: 45
     strategy:
       # One platform failing should still produce the others, so a Windows-only problem
       # does not cost the whole release.
@@ -40,7 +43,13 @@ jobs:
         include:
           - os: macos-14
             target: macos-arm64
-          - os: macos-13
+          # `macos-13` was retired in December 2025 and the label no longer resolves to
+          # anything: a job asking for it is never assigned a runner and simply sits in the
+          # queue — it does not fail, which is worse, because the whole run stays "in
+          # progress" and its logs stay unavailable. `macos-15-intel` is the standard-runner
+          # replacement, and the last x86_64 macOS image GitHub will offer: it goes away in
+          # August 2027, after which this row has to be dropped rather than re-pointed.
+          - os: macos-15-intel
             target: macos-x86_64
           - os: windows-latest
             target: windows-x86_64

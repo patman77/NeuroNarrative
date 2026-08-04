@@ -390,6 +390,11 @@ change before committing to a tag.
 - Linux builds on **ubuntu-22.04, deliberately not `ubuntu-latest`**: PyInstaller links against
   the build machine's glibc, so building on the newest Ubuntu produces a binary that refuses to
   start on any older distro.
+- macOS Intel is **`macos-15-intel`**, not `macos-13` — that label was retired in December 2025.
+  A retired label does not fail the job, it leaves it **queued forever**, which holds the whole
+  run in "in progress" and makes its logs undownloadable. `timeout-minutes` does not save you:
+  it only starts counting once a runner is assigned. `macos-15-intel` is the last x86_64 macOS
+  image GitHub will offer and goes away in August 2027 — drop the row then, don't re-point it.
 - Every platform is gated on a **boot check** — launch headless, wait for the URL it prints,
   then assert `/api/health` and that the SPA is served. The frontend is bundled *data*, so a path
   mistake there only shows up in a frozen build.
