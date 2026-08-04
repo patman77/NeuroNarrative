@@ -407,6 +407,13 @@ change before committing to a tag.
   rather than claiming a release number it was not built from.
 - The copyright year in the About box is `new Date().getFullYear()` **at build time**
   (`__BUILD_YEAR__`), not a constant somebody has to remember to bump every January.
+- macOS has **two** About windows and they share no code. The React one is the version badge in
+  the header; *NeuroNarrative → About NeuroNarrative* is AppKit's own panel, which reads only
+  `Info.plist` (`NSHumanReadableCopyright` is the line under the version — without it the panel
+  shows the name and version and nothing else) plus a `Credits.rtf`/`Credits.html` from
+  `Contents/Resources`. That credits file cannot go through the spec's `datas`, because
+  PyInstaller puts collected data under `Contents/Frameworks`; `build_desktop.sh` writes it
+  after the bundle exists. Both paths compute the year at build time, so they cannot drift apart.
 - Nothing is signed or notarized, and the release notes say so along with the Gatekeeper and
   SmartScreen workarounds. On Linux there is no bundled GUI toolkit, so `_show_window` fails and
   the app falls back to the system browser — which it is written to do.

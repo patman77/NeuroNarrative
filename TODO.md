@@ -30,6 +30,7 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Click-to-seek on overview | ✅ | `handleClick` + `onSeek` |
 | Timeline navigation buttons (⏮ -10s +10s 25% 50% 75% ⏭) | ✅ | 7 buttons in `SignalPreview` |
 | Synchronized audio playback | ✅ | `<audio>` + `requestAnimationFrame` |
+| macOS About panel (⌘-menu) | ✅ | `NSHumanReadableCopyright` + `CFBundleGetInfoString` in the Info.plist and a `Credits.html` written into `Contents/Resources` by `build_desktop.sh` — AppKit's panel reads only those, nothing from the React About box reaches it. Year computed at build time. **Verified by inspecting the built bundle, not by looking at the panel**: driving the menu needs assistive access, which osascript does not have here |
 | Version visible in the UI + About box | ✅ | Header badge shows the build version; clicking it opens an About dialog (native `<dialog>`) with version, build date, backend/summariser state and `© <build year> Patrick Klie`. Version comes from `NEURONARRATIVE_VERSION` via Vite `define` — the same variable the PyInstaller spec stamps into the Info.plist, so window and bundle cannot disagree. Year is stamped at build time, never hardcoded |
 | Backend health status pill in header | ✅ | `App.tsx` – polls `/api/health` every 30 s, retries every 5 s while offline |
 | Analyze error banner (above fold) | ✅ | Replaces buried error text |

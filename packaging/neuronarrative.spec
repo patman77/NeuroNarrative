@@ -9,6 +9,7 @@
 
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
@@ -22,6 +23,10 @@ STAGED_MODELS = SPEC_DIR / "build" / "asr_models"
 # Set from the git tag by the release workflow. A shipped .app that reports 0.1.0 forever
 # gives a bug report no way to say which build it came from.
 VERSION = os.environ.get("NEURONARRATIVE_VERSION", "0.1.0").lstrip("v") or "0.1.0"
+AUTHOR = "Patrick Klie"
+# Whenever the build happened, matching the frontend's `__BUILD_YEAR__` — neither is a constant
+# somebody has to remember to bump every January.
+COPYRIGHT = f"© {date.today().year} {AUTHOR}. All rights reserved."
 
 datas = []
 binaries = []
@@ -142,11 +147,18 @@ if sys.platform == "darwin":
         name="NeuroNarrative.app",
         icon=None,
         bundle_identifier="dev.neuronarrative.app",
+        # These keys are the *only* thing the macOS "About NeuroNarrative" panel reads — it is
+        # AppKit's own window, not ours, so nothing in the React About box reaches it.
+        # `NSHumanReadableCopyright` is the line it prints under the version; without it the
+        # panel shows the name and version and nothing else, which is what it did.
         info_plist={
             "CFBundleName": "NeuroNarrative",
             "CFBundleDisplayName": "NeuroNarrative",
             "CFBundleShortVersionString": VERSION,
             "CFBundleVersion": VERSION,
+            "NSHumanReadableCopyright": COPYRIGHT,
+            # Legacy key, but it is what Finder's Get Info panel shows.
+            "CFBundleGetInfoString": f"NeuroNarrative {VERSION}, {COPYRIGHT}",
             "NSHighResolutionCapable": True,
             # No server sockets are exposed off-device; loopback only.
             "LSBackgroundOnly": False,

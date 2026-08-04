@@ -82,6 +82,32 @@ echo "==> Running PyInstaller"
 rm -rf "$REPO_ROOT/backend/dist" "$REPO_ROOT/backend/build"
 pyinstaller "$REPO_ROOT/packaging/neuronarrative.spec" --noconfirm --distpath "$REPO_ROOT/dist" --workpath "$REPO_ROOT/packaging/build/pyinstaller"
 
+APP_BUNDLE="$REPO_ROOT/dist/NeuroNarrative.app"
+if [[ -d "$APP_BUNDLE" ]]; then
+  # The macOS About panel is AppKit's own window and reads only the Info.plist plus a Credits
+  # file from Contents/Resources — nothing from the React About box reaches it. PyInstaller
+  # puts collected data under Contents/Frameworks, so this cannot go through the spec's
+  # `datas`; it has to be written after the bundle exists.
+  RESOURCES="$APP_BUNDLE/Contents/Resources"
+  mkdir -p "$RESOURCES"
+  YEAR="$(date +%Y)"
+  cat > "$RESOURCES/Credits.html" <<HTML
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body { font: 12px -apple-system, "Helvetica Neue", sans-serif; margin: 0; color: #1d1d1f; }
+p { margin: 0 0 8px; }
+.muted { color: #6e6e73; }
+@media (prefers-color-scheme: dark) { body { color: #f5f5f7; } .muted { color: #a1a1a6; } }
+</style></head><body>
+<p>Aligns GSR recordings with the spoken session, finds the physiologically significant
+moments and writes them up.</p>
+<p class="muted">Everything runs on this machine — no recording is uploaded.</p>
+<p class="muted">© $YEAR Patrick Klie. All rights reserved.</p>
+</body></html>
+HTML
+  echo "==> Wrote About-panel credits to Contents/Resources/Credits.html"
+fi
+
 echo
 echo "==> Done"
 du -sh "$REPO_ROOT/dist"/* 2>/dev/null || true
