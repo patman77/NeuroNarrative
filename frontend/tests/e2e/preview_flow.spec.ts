@@ -249,3 +249,34 @@ test('detected events and transcript are scrollable, resizable panes', async ({ 
   expect(css.resize).toBe('vertical');
   expect(css.overflowY).toBe('auto');
 });
+
+test('the header shows the build version and the about box names its author', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+
+  // Visible without opening anything: the first thing a bug report needs is the build it came
+  // from, and a number hidden behind a dialog gets left out.
+  const badge = page.locator('.version-badge');
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveText(/^v\d+\.\d+\.\d+/);
+
+  await badge.click();
+  const dialog = page.locator('dialog.about-dialog');
+  await expect(dialog).toBeVisible();
+
+  // The version in the dialog is the same one the badge shows — they come from the same
+  // build-time constant, and a mismatch would mean one of them is stale.
+  const badgeVersion = (await badge.textContent())!.replace(/^v/, '');
+  await expect(dialog).toContainText(badgeVersion);
+
+  await expect(dialog).toContainText('Patrick Klie');
+  // The copyright year is stamped at build time rather than hardcoded, so it must be the year
+  // the bundle was built — which for a test run is this one.
+  await expect(dialog).toContainText(`© ${new Date().getFullYear()} Patrick Klie`);
+
+  // A native <dialog> brings Escape-to-close with it; this checks the React state follows.
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await badge.click();
+  await expect(page.locator('dialog.about-dialog')).toBeVisible();
+});

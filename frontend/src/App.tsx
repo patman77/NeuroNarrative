@@ -8,6 +8,8 @@ import { TranscriptTimeline } from "./components/TranscriptTimeline";
 import { RuleSelector } from "./components/RuleSelector";
 import { UploadPanel } from "./components/UploadPanel";
 import { SignalPreview } from "./components/SignalPreview";
+import { AboutDialog } from "./components/AboutDialog";
+import { APP_VERSION } from "./buildInfo";
 import type { ParsedGsrResult } from "./utils/gsrParser";
 import { parseGsrCsv } from "./utils/gsrParser";
 import "./styles.css";
@@ -350,6 +352,7 @@ function App() {
   // amount depends on the passage: a dense stretch needs a tight window to stay specific, and
   // around a silent one you have to reach further to find anything at all.
   const [transcriptWindowSec, setTranscriptWindowSec] = useState(DEFAULT_TRANSCRIPT_WINDOW_SEC);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [layout, setLayout] = useState<WorkspaceLayout>(() =>
     localStorage.getItem(LAYOUT_KEY) === "split" ? "split" : "stacked"
   );
@@ -709,7 +712,19 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <h1>NeuroNarrative</h1>
+          <h1>
+            NeuroNarrative
+            {/* Readable without opening anything: the first thing a bug report needs is which
+                build it came from, and a number behind a dialog gets left out. */}
+            <button
+              type="button"
+              className="version-badge"
+              onClick={() => setAboutOpen(true)}
+              title="About NeuroNarrative"
+            >
+              v{APP_VERSION}
+            </button>
+          </h1>
           <p>Align biosignals with conversation to surface emotion-linked summaries.</p>
         </div>
         <div className="app-header-actions">
@@ -918,6 +933,13 @@ function App() {
           <TranscriptTimeline transcript={transcript} onSeek={handleSeek} />
         </section>
       </main>
+
+      <AboutDialog
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        backendOnline={backendOnline}
+        summarizerStatus={health?.summarizer_status}
+      />
     </div>
   );
 }

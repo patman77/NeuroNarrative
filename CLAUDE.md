@@ -400,8 +400,13 @@ change before committing to a tag.
   mistake there only shows up in a frozen build.
 - macOS archives use `ditto`, not `zip`: a `.app` carries symlinks and resource forks that plain
   zip mangles, and a mangled bundle will not launch.
-- `NEURONARRATIVE_VERSION` is read by the spec and stamped into the Info.plist, so a bug report
-  can say which build it came from.
+- `NEURONARRATIVE_VERSION` is read by **both** the PyInstaller spec (macOS Info.plist) and
+  `vite.config.ts` (`__APP_VERSION__`, shown in the header and the About box). `build_desktop.sh`
+  runs `npm run build` in the same environment, so the window and the bundle cannot disagree
+  about their version. Unset, the UI says `0.1.0-dev` — a working copy admitting what it is
+  rather than claiming a release number it was not built from.
+- The copyright year in the About box is `new Date().getFullYear()` **at build time**
+  (`__BUILD_YEAR__`), not a constant somebody has to remember to bump every January.
 - Nothing is signed or notarized, and the release notes say so along with the Gatekeeper and
   SmartScreen workarounds. On Linux there is no bundled GUI toolkit, so `_show_window` fails and
   the app falls back to the system browser — which it is written to do.

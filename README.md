@@ -46,7 +46,7 @@ so every figure the app prints is a count rather than a measured accuracy — se
 | Session export: CSV, JSON, SRT, PDF | ✅ |
 | Backend health status pill with auto-retry | ✅ |
 | Backend unit tests (pytest, 198 passing) | ✅ |
-| Frontend E2E tests (Playwright, 23 passing) | ✅ |
+| Frontend E2E tests (Playwright, 24 passing) | ✅ |
 | ESLint config (TypeScript + React rules) | ✅ |
 | CI: GitHub Actions (frontend lint + typecheck + build, backend pytest) | ✅ |
 | Speaker diarisation | ❌ deliberately not done — the corpus is solo, so there is nothing to separate; cue matching carries the role signal instead |
@@ -54,7 +54,9 @@ so every figure the app prints is a count rather than a measured accuracy — se
 | Classifiers (BE vs KB, SN vs FN) | ❌ tooling ready, needs labels |
 | EEG ingestion | ❌ not started |
 | Desktop app: frozen macOS `.app` (PyInstaller), native window, offline-capable | ✅ |
-| Desktop app: Windows / Linux builds, code signing | ❌ not started |
+| Desktop app: Windows / Linux builds via GitHub Actions on a `v*` tag | ✅ built and boot-checked; macOS Intel path untried |
+| Desktop app: code signing / notarization | ❌ not started — Gatekeeper and SmartScreen will object |
+| Build version shown in the header and About box, with copyright | ✅ |
 
 ---
 

@@ -12,7 +12,7 @@ and the report).
 ## What exists
 
 Stages 1–6 of the detection roadmap, plus the session narrative and the review UI. Exercised by
-**198 backend tests** and **23 Playwright E2E tests**.
+**198 backend tests** and **24 Playwright E2E tests**.
 
 ### Signal
 
@@ -39,6 +39,7 @@ Stages 1–6 of the detection roadmap, plus the session narrative and the review
 | Marker tooltips carrying the speech around a phenomenon, over an adjustable ±n s window (default 3) | `App.tsx`, `SignalPreview.tsx` |
 | Resizable, scrollable panes for detected events and the transcript | `ResizablePane.tsx` |
 | Two workspace layouts — plot pinned above the lists, or in its own column beside them; switched from the header, remembered | `App.tsx`, `styles.css` |
+| Build version in the header, and an About box with build date, backend state and `© <build year> Patrick Klie` | `buildInfo.ts`, `AboutDialog.tsx` |
 
 All three hover directions are verified against a real analysis to mark their target *and* to
 leave it inside the visible area of its list — the distinction matters, because an earlier

@@ -30,6 +30,7 @@ Status legend: ✅ Done · 🔧 Partial · ❌ Not started · 🧪 Stubbed
 | Click-to-seek on overview | ✅ | `handleClick` + `onSeek` |
 | Timeline navigation buttons (⏮ -10s +10s 25% 50% 75% ⏭) | ✅ | 7 buttons in `SignalPreview` |
 | Synchronized audio playback | ✅ | `<audio>` + `requestAnimationFrame` |
+| Version visible in the UI + About box | ✅ | Header badge shows the build version; clicking it opens an About dialog (native `<dialog>`) with version, build date, backend/summariser state and `© <build year> Patrick Klie`. Version comes from `NEURONARRATIVE_VERSION` via Vite `define` — the same variable the PyInstaller spec stamps into the Info.plist, so window and bundle cannot disagree. Year is stamped at build time, never hardcoded |
 | Backend health status pill in header | ✅ | `App.tsx` – polls `/api/health` every 30 s, retries every 5 s while offline |
 | Analyze error banner (above fold) | ✅ | Replaces buried error text |
 | Drag-and-drop file upload | ✅ | `UploadPanel.tsx` – per-field D&D with extension validation |
@@ -150,7 +151,7 @@ lives in `docs/phenomena-detection-design.md` §11.
 | Desktop build: macOS Intel | 🔧 | The job asked for the retired `macos-13` label, was never assigned a runner and sat queued indefinitely. Now `macos-15-intel` — the last x86_64 macOS image GitHub will offer, retiring August 2027 — but **that path has not been exercised yet** |
 | Code signing / notarization | ❌ | Unsigned; Gatekeeper blocks a downloaded copy |
 | Native window (not a browser tab) | ✅ | pywebview → system WKWebView. +4 MB, no Node, no second binary to sign. Electron/Tauri not needed. |
-| End-to-end tests (Playwright) | ✅ | `preview_flow.spec.ts` (11) + `linked_view.spec.ts` (12) – 23 tests, all pass. Needs dev server on **:5175** (config `baseURL`) and `npx playwright install chromium`. The linked-view specs stub the backend from a captured response, so they need no analysis run. Not run in CI. |
+| End-to-end tests (Playwright) | ✅ | `preview_flow.spec.ts` (12) + `linked_view.spec.ts` (12) – 24 tests, all pass. Needs dev server on **:5175** (config `baseURL`) and `npx playwright install chromium`. The linked-view specs stub the backend from a captured response, so they need no analysis run. Not run in CI. |
 | Backend unit tests | ✅ | 13 modules under `backend/tests/` – 198 tests; skip gracefully when deps absent |
 | ESLint configuration | ✅ | `frontend/.eslintrc.cjs` – ESLint 8 legacy format, `@typescript-eslint` + react + react-hooks + prettier. `npm run lint` is clean. |
 | CI/CD pipeline | ✅ | `.github/workflows/ci.yml` – frontend lint + typecheck + build, backend pytest, parallel jobs |
